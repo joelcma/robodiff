@@ -312,3 +312,502 @@ searchBox.addEventListener("input", (e) => {
 // Initialize
 renderReport();
 setupCollapsible();
+setupHistoryFeature();
+
+// History functionality
+function setupHistoryFeature() {
+  if (!HISTORY_ENABLED || !HISTORY_DATA) {
+    // Hide history-related controls
+    document.getElementById("showHistory").style.display = "none";
+    document.getElementById("saveToHistoryGroup").style.display = "none";
+    return;
+  }
+
+  // Show save to history button
+  document.getElementById("saveToHistoryGroup").style.display = "flex";
+
+  // Populate column selector dropdown
+  const columnSelect = document.getElementById("columnSelect");
+  DATA.columns.forEach((col, idx) => {
+    const option = document.createElement("option");
+    option.value = idx;
+    option.textContent = col;
+    columnSelect.appendChild(option);
+  });
+
+  // Populate tag dropdown
+  const tags = HISTORY_DATA.entries
+    .map((e) => e.tag)
+    .filter((v, i, a) => a.indexOf(v) === i) // unique
+    .sort();
+
+  const tagSelect = document.getElementById("historyTagSelect");
+  tags.forEach((tag) => {
+    const option = document.createElement("option");
+    option.value = tag;
+    option.textContent = tag;
+    tagSelect.appendChild(option);
+  });
+
+  // View switcher
+  document.getElementById("showComparison").addEventListener("click", () => {
+    document.getElementById("comparisonView").style.display = "block";
+    document.getElementById("historyView").style.display = "none";
+    document.getElementById("comparisonControls").style.display = "flex";
+    document.getElementById("comparisonControls2").style.display = "flex";
+    document.getElementById("searchBox").parentElement.style.display = "flex";
+    document.getElementById("historyControls").style.display = "none";
+    document.getElementById("saveToHistoryGroup").style.display = "flex";
+
+    document.getElementById("showComparison").classList.add("active");
+    document.getElementById("showHistory").classList.remove("active");
+  });
+
+  document.getElementById("showHistory").addEventListener("click", () => {
+    document.getElementById("comparisonView").style.display = "none";
+    document.getElementById("historyView").style.display = "block";
+    document.getElementById("comparisonControls").style.display = "none";
+    document.getElementById("comparisonControls2").style.display = "none";
+    document.getElementById("searchBox").parentElement.style.display = "none";
+    document.getElementById("historyControls").style.display = "flex";
+    document.getElementById("saveToHistoryGroup").style.display = "none";
+
+    document.getElementById("showHistory").classList.add("active");
+    document.getElementById("showComparison").classList.remove("active");
+  });
+
+  // Tag selection
+  tagSelect.addEventListener("change", (e) => {
+    if (e.target.value) {
+      renderHistoryView(e.target.value);
+    } else {
+      document.getElementById("historyContent").innerHTML =
+        '<p class="history-placeholder">Select a tag to view historical trends</p>';
+    }
+  });
+
+  // Save to history button
+  document.getElementById("saveToHistory").addEventListener("click", () => {
+    const columnIdx = document.getElementById("columnSelect").value;
+    if (columnIdx === "") {
+      alert("Please select which test run to save");
+      return;
+    }
+
+    const tag = document.getElementById("tagInput").value.trim();
+    if (!tag) {
+      alert("Please enter a tag name");
+      return;
+    }
+
+    const idx = parseInt(columnIdx);
+    const selectedColumn = DATA.columns[idx];
+
+    // Extract only the selected column's results
+    const filteredSuites = DATA.suites.map((suite) => ({
+      name: suite.name,
+      tests: suite.tests.map((test) => ({
+        name: test.name,
+        results: [test.results[idx]], // Only the selected column
+      })),
+    }));
+
+    const entry = {
+      timestamp: new Date().toISOString(),
+      tag: tag,
+      title: selectedColumn,
+      columns: [selectedColumn],
+      suites: filteredSuites,
+    };
+
+    // Add to history
+    HISTORY_DATA.entries.unshift(entry);
+
+    // Show success message
+    alert(
+      `Saved "${selectedColumn}" to history with tag: ${tag}\n\nNote: History is saved in the browser's local storage. To persist across sessions, use the --enable-history flag and save the ${HISTORY_FILE} file.`
+    );
+
+    // Update dropdown if needed
+    if (!tags.includes(tag)) {
+      const option = document.createElement("option");
+      option.value = tag;
+      option.textContent = tag;
+      tagSelect.appendChild(option);
+    }
+
+    // Clear inputs
+    document.getElementById("tagInput").value = "";
+    document.getElementById("columnSelect").value = "";
+
+    // Try to save to localStorage
+    try {
+      localStorage.setItem("robotdiff_history", JSON.stringify(HISTORY_DATA));
+    } catch (e) {
+      console.warn("Could not save to localStorage:", e);
+    }
+  });
+
+  // Load from localStorage if available
+  try {
+    const stored = localStorage.getItem("robotdiff_history");
+    if (stored) {
+      const storedData = JSON.parse(stored);
+      HISTORY_DATA.entries = storedData.entries || [];
+
+      // Refresh tag dropdown
+      tagSelect.innerHTML = '<option value="">Select a tag...</option>';
+      const updatedTags = HISTORY_DATA.entries
+        .map((e) => e.tag)
+        .filter((v, i, a) => a.indexOf(v) === i)
+        .sort();
+      updatedTags.forEach((tag) => {
+        const option = document.createElement("option");
+        option.value = tag;
+        option.textContent = tag;
+        tagSelect.appendChild(option);
+      });
+    }
+  } catch (e) {
+    console.warn("Could not load from localStorage:", e);
+  }
+}
+
+function renderHistoryView(tag) {
+  const entries = HISTORY_DATA.entries
+    .filter((e) => e.tag === tag)
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+  if (entries.length === 0) {
+    document.getElementById("historyContent").innerHTML =
+      '<p class="history-placeholder">No history found for tag: ' +
+      escapeHtml(tag) +
+      "</p>";
+    return;
+  }
+
+  // Calculate statistics for each entry
+  const stats = entries.map((entry) => {
+    let totalTests = 0;
+    let passedTests = 0;
+    let failedTests = 0;
+    let diffTests = 0;
+
+    entry.suites.forEach((suite) => {
+      suite.tests.forEach((test) => {
+        totalTests++;
+        const status = calculateTestStatus(test.results);
+        if (status === "all_passed") passedTests++;
+        else if (status === "all_failed") failedTests++;
+        else if (status === "diff") diffTests++;
+      });
+    });
+
+    return {
+      timestamp: new Date(entry.timestamp),
+      total: totalTests,
+      passed: passedTests,
+      failed: failedTests,
+      diff: diffTests,
+      passRate:
+        totalTests > 0 ? ((passedTests / totalTests) * 100).toFixed(1) : 0,
+    };
+  });
+
+  let html = '<div class="history-chart">';
+  html += "<h2>Historical Trends for Tag: " + escapeHtml(tag) + "</h2>";
+
+  // Simple text-based chart
+  html += '<div class="chart-container">';
+  html += '<canvas id="trendChart" width="800" height="300"></canvas>';
+  html += "</div>";
+
+  html += '<div class="timeline">';
+
+  stats.forEach((stat, i) => {
+    const entry = entries[i];
+    html +=
+      '<div class="timeline-item" data-timestamp="' + entry.timestamp + '">';
+    html +=
+      '<div class="timeline-date">' +
+      stat.timestamp.toLocaleString() +
+      "</div>";
+    html += '<div class="timeline-stats">';
+    html += '<div class="timeline-stat">Total: ' + stat.total + "</div>";
+    html +=
+      '<div class="timeline-stat pass">✓ Passed: ' +
+      stat.passed +
+      " (" +
+      stat.passRate +
+      "%)</div>";
+    html +=
+      '<div class="timeline-stat fail">✗ Failed: ' + stat.failed + "</div>";
+    if (stat.diff > 0) {
+      html +=
+        '<div class="timeline-stat" style="color: #f59e0b;">⚠ Differences: ' +
+        stat.diff +
+        "</div>";
+    }
+    html += "</div>";
+    html += '<div class="timeline-actions">';
+    html +=
+      '<button class="btn-icon btn-edit" title="Edit tag" data-timestamp="' +
+      entry.timestamp +
+      '">✏️</button>';
+    html +=
+      '<button class="btn-icon btn-delete" title="Delete entry" data-timestamp="' +
+      entry.timestamp +
+      '">🗑️</button>';
+    html += "</div>";
+    html += "</div>";
+  });
+
+  html += "</div>";
+  html += "</div>";
+
+  document.getElementById("historyContent").innerHTML = html;
+
+  // Attach event listeners for edit and delete buttons
+  document.querySelectorAll(".btn-edit").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const timestamp = btn.dataset.timestamp;
+      showEditModal(timestamp);
+    });
+  });
+
+  document.querySelectorAll(".btn-delete").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const timestamp = btn.dataset.timestamp;
+      deleteHistoryEntry(timestamp);
+    });
+  });
+
+  // Draw simple canvas chart
+  drawTrendChart(stats.reverse()); // Reverse to show oldest first in chart
+}
+
+function drawTrendChart(stats) {
+  const canvas = document.getElementById("trendChart");
+  if (!canvas) return;
+
+  const ctx = canvas.getContext("2d");
+  const width = canvas.width;
+  const height = canvas.height;
+  const padding = 40;
+  const chartWidth = width - padding * 2;
+  const chartHeight = height - padding * 2;
+
+  // Clear canvas
+  ctx.clearRect(0, 0, width, height);
+
+  if (stats.length === 0) return;
+
+  // Find max value for scaling
+  const maxValue = Math.max(...stats.map((s) => s.total));
+  if (maxValue === 0) return;
+
+  // Draw axes
+  ctx.strokeStyle = "#e2e8f0";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(padding, padding);
+  ctx.lineTo(padding, height - padding);
+  ctx.lineTo(width - padding, height - padding);
+  ctx.stroke();
+
+  // Draw grid lines
+  ctx.strokeStyle = "#f7fafc";
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 5; i++) {
+    const y = padding + (chartHeight / 5) * i;
+    ctx.beginPath();
+    ctx.moveTo(padding, y);
+    ctx.lineTo(width - padding, y);
+    ctx.stroke();
+  }
+
+  // Draw pass rate line
+  ctx.strokeStyle = "#22c55e";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+
+  stats.forEach((stat, i) => {
+    const x = padding + (chartWidth / (stats.length - 1 || 1)) * i;
+    const y = height - padding - chartHeight * (stat.passed / maxValue);
+
+    if (i === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  });
+  ctx.stroke();
+
+  // Draw fail line
+  ctx.strokeStyle = "#ef4444";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+
+  stats.forEach((stat, i) => {
+    const x = padding + (chartWidth / (stats.length - 1 || 1)) * i;
+    const y = height - padding - chartHeight * (stat.failed / maxValue);
+
+    if (i === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  });
+  ctx.stroke();
+
+  // Draw points
+  stats.forEach((stat, i) => {
+    const x = padding + (chartWidth / (stats.length - 1 || 1)) * i;
+
+    // Passed point
+    const yPass = height - padding - chartHeight * (stat.passed / maxValue);
+    ctx.fillStyle = "#22c55e";
+    ctx.beginPath();
+    ctx.arc(x, yPass, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Failed point
+    const yFail = height - padding - chartHeight * (stat.failed / maxValue);
+    ctx.fillStyle = "#ef4444";
+    ctx.beginPath();
+    ctx.arc(x, yFail, 5, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Draw labels
+  ctx.fillStyle = "#64748b";
+  ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto';
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+
+  for (let i = 0; i <= 5; i++) {
+    const value = Math.round(maxValue - (maxValue / 5) * i);
+    const y = padding + (chartHeight / 5) * i;
+    ctx.fillText(value.toString(), padding - 10, y);
+  }
+
+  // Legend
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#22c55e";
+  ctx.fillRect(width - 150, 20, 20, 3);
+  ctx.fillStyle = "#2d3748";
+  ctx.fillText("Passed", width - 125, 21);
+
+  ctx.fillStyle = "#ef4444";
+  ctx.fillRect(width - 150, 35, 20, 3);
+  ctx.fillStyle = "#2d3748";
+  ctx.fillText("Failed", width - 125, 36);
+}
+
+function showEditModal(timestamp) {
+  const entry = HISTORY_DATA.entries.find((e) => e.timestamp === timestamp);
+  if (!entry) return;
+
+  const newTag = prompt(
+    `Edit tag for entry from ${new Date(timestamp).toLocaleString()}:`,
+    entry.tag
+  );
+  if (newTag && newTag.trim() && newTag !== entry.tag) {
+    const oldTag = entry.tag;
+    entry.tag = newTag.trim();
+
+    // Save to localStorage
+    try {
+      localStorage.setItem("robotdiff_history", JSON.stringify(HISTORY_DATA));
+    } catch (e) {
+      console.warn("Could not save to localStorage:", e);
+    }
+
+    // Refresh the tag dropdown
+    const tagSelect = document.getElementById("historyTagSelect");
+    const tags = HISTORY_DATA.entries
+      .map((e) => e.tag)
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .sort();
+
+    tagSelect.innerHTML = '<option value="">Select a tag...</option>';
+    tags.forEach((tag) => {
+      const option = document.createElement("option");
+      option.value = tag;
+      option.textContent = tag;
+      tagSelect.appendChild(option);
+    });
+
+    // If we were viewing the old tag, switch to the new one
+    if (tagSelect.value === oldTag) {
+      tagSelect.value = newTag;
+      renderHistoryView(newTag);
+    } else {
+      // Refresh current view
+      const currentTag = tagSelect.value;
+      if (currentTag) {
+        renderHistoryView(currentTag);
+      }
+    }
+
+    alert(`Tag updated from "${oldTag}" to "${newTag}"`);
+  }
+}
+
+function deleteHistoryEntry(timestamp) {
+  const entry = HISTORY_DATA.entries.find((e) => e.timestamp === timestamp);
+  if (!entry) return;
+
+  if (
+    !confirm(
+      `Delete entry from ${new Date(timestamp).toLocaleString()} with tag "${
+        entry.tag
+      }"?`
+    )
+  ) {
+    return;
+  }
+
+  // Remove entry
+  const index = HISTORY_DATA.entries.findIndex(
+    (e) => e.timestamp === timestamp
+  );
+  if (index !== -1) {
+    HISTORY_DATA.entries.splice(index, 1);
+  }
+
+  // Save to localStorage
+  try {
+    localStorage.setItem("robotdiff_history", JSON.stringify(HISTORY_DATA));
+  } catch (e) {
+    console.warn("Could not save to localStorage:", e);
+  }
+
+  // Refresh the tag dropdown
+  const tagSelect = document.getElementById("historyTagSelect");
+  const tags = HISTORY_DATA.entries
+    .map((e) => e.tag)
+    .filter((v, i, a) => a.indexOf(v) === i)
+    .sort();
+
+  tagSelect.innerHTML = '<option value="">Select a tag...</option>';
+  tags.forEach((tag) => {
+    const option = document.createElement("option");
+    option.value = tag;
+    option.textContent = tag;
+    tagSelect.appendChild(option);
+  });
+
+  // Refresh current view
+  const currentTag = tagSelect.value;
+  if (currentTag) {
+    renderHistoryView(currentTag);
+  } else {
+    document.getElementById("historyContent").innerHTML =
+      '<p class="history-placeholder">Select a tag to view historical trends</p>';
+  }
+
+  alert("Entry deleted successfully");
+}

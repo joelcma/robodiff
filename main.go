@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 //go:embed template/report.html
@@ -40,11 +41,17 @@ Options:
                           input file names.
  -t --title title         Title for the generated diff report. The default
                           title is 'Test Run Diff Report'.
+ --enable-history         Enable history saving feature in the report. This
+                          allows you to save comparison results with tags and
+                          view historical trends.
+ --history-file file      Path to history storage file. Default is
+                          'robotdiff_history.json'.
  -h --help                Print this usage instruction.
 
 Examples:
 $ robotdiff output1.xml output2.xml output3.xml
 $ robotdiff --name Env1 --name Env2 smoke1.xml smoke2.xml
+$ robotdiff --enable-history --name Run1 --name Run2 output1.xml output2.xml
 `
 
 type StringSlice []string
@@ -59,10 +66,13 @@ func (s *StringSlice) Set(value string) error {
 }
 
 type Config struct {
-	Report string
-	Names  StringSlice
-	Title  string
-	Help   bool
+	Report        string
+	Names         StringSlice
+	Title         string
+	Help          bool
+	HistoryFile   string
+	ViewHistory   string
+	HistoryEnable bool
 }
 
 func main() {
@@ -137,7 +147,7 @@ func main() {
 	}
 
 	reporter := NewDiffReporter(config.Report, config.Title, names)
-	if err := reporter.Report(results); err != nil {
+	if err := reporter.Report(results, config.HistoryFile, config.HistoryEnable); err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating report: %v\n", err)
 		os.Exit(1)
 	}
@@ -156,6 +166,9 @@ func parseArgs() *Config {
 	flag.StringVar(&config.Title, "title", "Test Run Diff Report", "Title for the diff report")
 	flag.BoolVar(&config.Help, "h", false, "Show help")
 	flag.BoolVar(&config.Help, "help", false, "Show help")
+	flag.StringVar(&config.HistoryFile, "history-file", "robotdiff_history.json", "Path to history storage file")
+	flag.StringVar(&config.ViewHistory, "view-history", "", "View history for a specific tag")
+	flag.BoolVar(&config.HistoryEnable, "enable-history", false, "Enable history saving feature in the report")
 
 	flag.Usage = func() {
 		fmt.Print(usage)
@@ -435,9 +448,89 @@ func NewDiffReporter(outpath, title string, columns []string) *DiffReporter {
 	}
 }
 
-func (dr *DiffReporter) Report(results *DiffResults) error {
+// History structures
+type HistoryEntry struct {
+	Timestamp time.Time   `json:"timestamp"`
+	Tag       string      `json:"tag"`
+	Title     string      `json:"title"`
+	Columns   []string    `json:"columns"`
+	Suites    []JSONSuite `json:"suites"`
+}
+
+type HistoryStore struct {
+	Entries []HistoryEntry `json:"entries"`
+}
+
+func LoadHistory(path string) (*HistoryStore, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &HistoryStore{Entries: []HistoryEntry{}}, nil
+		}
+		return nil, err
+	}
+	
+	var store HistoryStore
+	if err := json.Unmarshal(data, &store); err != nil {
+		return nil, err
+	}
+	return &store, nil
+}
+
+func (hs *HistoryStore) Save(path string) error {
+	data, err := json.MarshalIndent(hs, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
+}
+
+func (hs *HistoryStore) AddEntry(entry HistoryEntry) {
+	hs.Entries = append(hs.Entries, entry)
+	// Keep entries sorted by timestamp (newest first)
+	sort.Slice(hs.Entries, func(i, j int) bool {
+		return hs.Entries[i].Timestamp.After(hs.Entries[j].Timestamp)
+	})
+}
+
+func (hs *HistoryStore) GetByTag(tag string) []HistoryEntry {
+	var results []HistoryEntry
+	for _, entry := range hs.Entries {
+		if entry.Tag == tag {
+			results = append(results, entry)
+		}
+	}
+	return results
+}
+
+func (hs *HistoryStore) GetAllTags() []string {
+	tagSet := make(map[string]bool)
+	for _, entry := range hs.Entries {
+		tagSet[entry.Tag] = true
+	}
+	
+	var tags []string
+	for tag := range tagSet {
+		tags = append(tags, tag)
+	}
+	sort.Strings(tags)
+	return tags
+}
+
+func (dr *DiffReporter) Report(results *DiffResults, historyPath string, enableHistory bool) error {
 	// Build JSON data structure
 	jsonData := dr.buildJSONData(results)
+	
+	// Load history if enabled
+	var historyData *HistoryStore
+	if enableHistory && historyPath != "" {
+		var err error
+		historyData, err = LoadHistory(historyPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to load history: %v\n", err)
+			historyData = &HistoryStore{Entries: []HistoryEntry{}}
+		}
+	}
 	
 	// Create HTML file with embedded JSON, CSS, and JS
 	f, err := os.Create(dr.OutPath)
@@ -451,10 +544,22 @@ func (dr *DiffReporter) Report(results *DiffResults) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal JSON: %w", err)
 	}
+	
+	// Serialize history data
+	historyBytes := []byte("null")
+	if historyData != nil {
+		historyBytes, err = json.Marshal(historyData)
+		if err != nil {
+			return fmt.Errorf("failed to marshal history: %w", err)
+		}
+	}
 
 	// Build single-file HTML with embedded CSS and JS
 	html := strings.ReplaceAll(htmlTemplate, "{{TITLE}}", dr.title)
 	html = strings.ReplaceAll(html, "{{DATA}}", string(jsonBytes))
+	html = strings.ReplaceAll(html, "{{HISTORY}}", string(historyBytes))
+	html = strings.ReplaceAll(html, "{{HISTORY_FILE}}", historyPath)
+	html = strings.ReplaceAll(html, "{{HISTORY_ENABLED}}", fmt.Sprintf("%t", enableHistory))
 	html = strings.ReplaceAll(html, `<link rel="stylesheet" href="styles.css" />`, "<style>"+cssTemplate+"</style>")
 	html = strings.ReplaceAll(html, `<script src="app.js"></script>`, "<script>"+jsTemplate+"</script>")
 	
