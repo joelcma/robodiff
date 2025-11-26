@@ -284,6 +284,17 @@ th {
   letter-spacing: 0.5px;
 }
 
+.report-link {
+  color: #4a5568;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.report-link:hover {
+  color: #667eea;
+  text-decoration: underline;
+}
+
 th:first-child {
   padding-left: 40px;
 }

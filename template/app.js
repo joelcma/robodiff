@@ -50,8 +50,20 @@ function renderReport() {
 function renderTableHeader() {
   const header = document.getElementById("tableHeader");
   let headerHTML = '<tr><th class="col_name">Test Name</th>';
-  DATA.columns.forEach((col) => {
-    headerHTML += '<th class="col_status">' + escapeHtml(col) + "</th>";
+  DATA.columns.forEach((col, idx) => {
+    const reportLink = DATA.reportLinks && DATA.reportLinks[idx];
+    if (reportLink) {
+      headerHTML += '<th class="col_status">';
+      headerHTML +=
+        '<a href="' +
+        reportLink +
+        '" target="_blank" class="report-link" title="Open Robot Framework report">';
+      headerHTML += escapeHtml(col);
+      headerHTML += " 🔗</a>";
+      headerHTML += "</th>";
+    } else {
+      headerHTML += '<th class="col_status">' + escapeHtml(col) + "</th>";
+    }
   });
   headerHTML += "</tr>";
   header.innerHTML = headerHTML;

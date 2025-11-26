@@ -146,7 +146,7 @@ func main() {
 		results.AddParsedOutput(robot, names[i])
 	}
 
-	reporter := NewDiffReporter(config.Report, config.Title, names)
+	reporter := NewDiffReporter(config.Report, config.Title, names, inputFiles)
 	if err := reporter.Report(results, config.HistoryFile, config.HistoryEnable); err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating report: %v\n", err)
 		os.Exit(1)
@@ -424,28 +424,53 @@ type JSONSuite struct {
 }
 
 type JSONReport struct {
-	Title   string      `json:"title"`
-	Columns []string    `json:"columns"`
-	Suites  []JSONSuite `json:"suites"`
+	Title       string      `json:"title"`
+	Columns     []string    `json:"columns"`
+	ReportLinks []string    `json:"reportLinks"`
+	Suites      []JSONSuite `json:"suites"`
 }
 
 // DiffReporter generates the HTML report
 type DiffReporter struct {
-	OutPath string
-	title   string
-	columns []string
+	OutPath    string
+	title      string
+	columns    []string
+	inputFiles []string
 }
 
-func NewDiffReporter(outpath, title string, columns []string) *DiffReporter {
+func NewDiffReporter(outpath, title string, columns []string, inputFiles []string) *DiffReporter {
 	if outpath == "" {
 		outpath = "robotdiff.html"
 	}
 	absPath, _ := filepath.Abs(outpath)
 	return &DiffReporter{
-		OutPath: absPath,
-		title:   title,
-		columns: columns,
+		OutPath:    absPath,
+		title:      title,
+		columns:    columns,
+		inputFiles: inputFiles,
 	}
+}
+
+func (dr *DiffReporter) detectReportLinks() []string {
+	links := make([]string, len(dr.inputFiles))
+	for i, inputFile := range dr.inputFiles {
+		absPath, err := filepath.Abs(inputFile)
+		if err != nil {
+			links[i] = ""
+			continue
+		}
+		
+		dir := filepath.Dir(absPath)
+		reportPath := filepath.Join(dir, "report.html")
+		
+		if _, err := os.Stat(reportPath); err == nil {
+			// File exists, create file:// URL
+			links[i] = "file://" + reportPath
+		} else {
+			links[i] = ""
+		}
+	}
+	return links
 }
 
 // History structures
@@ -574,6 +599,9 @@ func (dr *DiffReporter) buildJSONData(results *DiffResults) *JSONReport {
 	
 	rows := results.Rows()
 	
+	// Detect report links
+	reportLinks := dr.detectReportLinks()
+	
 	// Build a set of all row names to identify suites vs tests
 	rowSet := make(map[string]bool)
 	for _, row := range rows {
@@ -642,9 +670,10 @@ func (dr *DiffReporter) buildJSONData(results *DiffResults) *JSONReport {
 	}
 	
 	return &JSONReport{
-		Title:   dr.title,
-		Columns: dr.columns,
-		Suites:  suites,
+		Title:       dr.title,
+		Columns:     dr.columns,
+		ReportLinks: reportLinks,
+		Suites:      suites,
 	}
 }
 
