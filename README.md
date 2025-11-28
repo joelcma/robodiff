@@ -1,73 +1,96 @@
-# Robot Diff - Go Edition
+# Robot Diff — Go edition
 
-A fast, native Go implementation of the Robot Framework output diff tool.
+Fast, zero-dependency, native Go implementation of the Robot Framework output diff tool. It compares two or more Robot Framework output XML files and generates a single, self-contained HTML diff report.
 
-## Features
+## Highlights
 
-- Compare 2+ Robot Framework XML output files
-- Generates HTML diff reports highlighting test status differences
-- **History tracking**: Save comparison results with tags and view trends over time
-- Zero dependencies (uses only Go standard library)
-- Fast startup and low memory usage
-- Single binary distribution
+- Compare 2+ Robot Framework output XML files and produce an offline-ready HTML report.
+- Single compiled binary; templates and data are embedded so the generated HTML is self-contained.
+- Optional history support — visualise trends and save selected runs (localStorage and optional JSON file on disk).
 
-## Building
+## Quick start (try it)
+
+Build:
 
 ```bash
 go build -o robotdiff
 ```
 
-## Usage
+Install (Go 1.17+):
 
 ```bash
-# Basic usage
-./robotdiff output1.xml output2.xml output3.xml
-
-# With custom names
-./robotdiff --name Env1 --name Env2 smoke1.xml smoke2.xml
-
-# Custom report name and title
-./robotdiff -r my_report.html -t "My Diff Report" output1.xml output2.xml
-
-# Enable history tracking
-./robotdiff --enable-history output1.xml output2.xml
+go install ./@latest
+# binary will be available in $GOPATH/bin or $(go env GOPATH)/bin
 ```
 
-## History Feature
+Generate a report using the included example files:
 
-The history feature allows you to save comparison results and track test trends over time:
+```bash
+./robotdiff test1.xml test2.xml
+# default output: robotdiff.html
+open robotdiff.html
+```
 
-1. **Enable History**: Use the `--enable-history` flag when generating reports
-2. **Save to History**: In the report:
-   - Select which test run (column) you want to save from the dropdown
-   - Enter a tag (e.g., "nightly", "release-1.0")
-   - Click "Save to History"
-3. **View Trends**: Click the "History" button and select a tag to see:
-   - Pass/fail trends over time
-   - Visual timeline of test results
-   - Pass rate graphs
+## Usage / Flags
 
-History is stored in browser localStorage and optionally in a JSON file (`robotdiff_history.json` by default).
+```
+Usage: robotdiff [options] input_files
 
-**Note**: When you have multiple test runs being compared (e.g., test1.xml, test2.xml), you must select which specific run to save to history. This allows you to track individual environments or configurations over time.
+Flags:
+ -r, --report <file>       HTML report file (default: robotdiff.html)
+ -n, --name <name>         Name for test runs; repeat for each input file
+ -t, --title <title>       Report title (default: "Test Run Diff Report")
+ --enable-history          Enable history support in the generated report
+ --history-file <file>     Path to history JSON file (default: robotdiff_history.json)
+ -h, --help                Show help
+```
 
-## Options
+Examples:
 
-- `-r, --report <file>` - HTML report file (default: robotdiff.html)
-- `-n, --name <name>` - Custom names for test runs (use multiple times)
-- `-t, --title <title>` - Title for the report (default: Test Run Diff Report)
-- `--enable-history` - Enable history saving feature in the report
-- `--history-file <file>` - Path to history storage file (default: robotdiff_history.json)
-- `-h, --help` - Show help
+```bash
+# Compare three outputs
+./robotdiff out1.xml out2.xml out3.xml
 
-## Differences from Python version
+# Custom names for runs
+./robotdiff --name 'CI-main' --name 'release-1' out1.xml out2.xml
 
-- Uses standard Go XML parser instead of Robot Framework library
-- Slightly faster startup and execution
-- No external dependencies required
-- Single compiled binary
+# Enable persistent history stored on disk
+./robotdiff --enable-history --history-file my_history.json out1.xml out2.xml
+```
 
-# License: Apache-2.0
+Note: The CLI parser currently includes a `--view-history` flag but that flag is not implemented in the code — consider it a TODO to either implement or remove.
 
-This program is a derivative of the Robot Framework Robot Diff tool by Nokia, originally licensed under the Apache-2.0 License. The original tool can be found at:
-https://robotframework.org/robotframework/2.1.2/tools/robotdiff.html
+## Template / embedded assets
+
+The `template/` directory contains the HTML, CSS and JavaScript used to render the report. These files are embedded into the final HTML using Go's `//go:embed` so the generated report is fully self-contained.
+
+Files of interest:
+
+- template/report.html — HTML template with placeholders
+- template/styles.css — CSS used in reports
+- template/app.js — JS used in the report and history UI
+- template/app.test.js — a small JS test harness (open `template/test.html` to run)
+
+## Testing
+
+- JavaScript tests: open `template/test.html` in a browser to run the included `app.test.js` harness.
+- Go tests: there are currently no unit tests for the Go logic. It's recommended to add tests for the status-calculation and `Rows()` logic (e.g., `row_status_test.go`).
+
+## CI / recommended automation
+
+- Add a simple GitHub Actions workflow to run `go test` / `go vet` / `golangci-lint` and build artifacts for macOS/Linux/Windows.
+- Optionally add release artifacts (prebuilt binaries) for easy installation.
+
+## Contributing
+
+Contributions welcome. Open issues for bugs/feature requests. For code changes, please open a pull request with tests where applicable.
+
+## Compatibility / build
+
+- Requires Go 1.16+ for `//go:embed`. This repo is tested against Go 1.21 (see `go.mod`).
+
+## License
+
+Apache-2.0
+
+This repository is a derivative of the Robot Framework Robot Diff tool (Nokia) and retains attribution to the original authors.
