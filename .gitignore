@@ -1,6 +1,8 @@
-robotdiff
-robot_diff
-robotdiff.html
-*.html
+/robotdiff
+/robot_diff
 *.xml
 .DS_Store
+
+# React frontend
+web/node_modules/
+web/dist/

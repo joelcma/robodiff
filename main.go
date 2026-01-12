@@ -2,16 +2,16 @@ package main
 
 import (
 	_ "embed"
-	"encoding/json"
-	"encoding/xml"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
-	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	robotdiff "robot_diff/backend/diff"
+	backend "robot_diff/backend/server"
 )
 
 //go:embed template/report.html
@@ -73,6 +73,10 @@ type Config struct {
 	HistoryFile   string
 	ViewHistory   string
 	HistoryEnable bool
+	Serve         bool
+	Dir           string
+	Addr          string
+	ScanInterval  time.Duration
 }
 
 func main() {
@@ -83,7 +87,35 @@ func main() {
 		os.Exit(0)
 	}
 
-	inputFiles := flag.Args()
+	args := flag.Args()
+	if shouldServe(config, args) {
+		dir := config.Dir
+		if dir == "" && len(args) == 1 {
+			dir = args[0]
+		}
+		if dir == "" {
+			fmt.Fprintln(os.Stderr, "Error: missing directory")
+			os.Exit(1)
+		}
+		if config.Addr == "" {
+			config.Addr = ":8080"
+		}
+		if config.ScanInterval <= 0 {
+			config.ScanInterval = 2 * time.Second
+		}
+
+		store := backend.NewRunStore(dir, config.ScanInterval)
+		store.Start()
+		server := backend.NewServer(config.Addr, store)
+		fmt.Printf("Serving on http://localhost%s (watching %s)\n", normalizeLocalhostAddr(config.Addr), dir)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	inputFiles := args
 	if len(inputFiles) < 2 {
 		fmt.Fprintln(os.Stderr, "Error: At least 2 input files are required")
 		fmt.Print(usage)
@@ -95,18 +127,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	results := NewDiffResults()
-	
+	results := robotdiff.NewDiffResults()
+
 	// Parse files in parallel
 	type parseResult struct {
 		index int
-		robot *Robot
+		robot *robotdiff.Robot
 		err   error
 	}
-	
+
 	resultChan := make(chan parseResult, len(inputFiles))
 	var wg sync.WaitGroup
-	
+
 	for i, path := range inputFiles {
 		wg.Add(1)
 		go func(idx int, p string) {
@@ -116,23 +148,22 @@ func main() {
 				resultChan <- parseResult{idx, nil, fmt.Errorf("failed to read file: %w", err)}
 				return
 			}
-			
-			var robot Robot
-			if err := xml.Unmarshal(data, &robot); err != nil {
+			robot, err := robotdiff.ParseRobotXMLBytes(data)
+			if err != nil {
 				resultChan <- parseResult{idx, nil, fmt.Errorf("failed to parse XML: %w", err)}
 				return
 			}
-			resultChan <- parseResult{idx, &robot, nil}
+			resultChan <- parseResult{idx, robot, nil}
 		}(i, path)
 	}
-	
+
 	go func() {
 		wg.Wait()
 		close(resultChan)
 	}()
-	
+
 	// Collect results in order
-	parsedResults := make([]*Robot, len(inputFiles))
+	parsedResults := make([]*robotdiff.Robot, len(inputFiles))
 	for result := range resultChan {
 		if result.err != nil {
 			fmt.Fprintf(os.Stderr, "Error processing %s: %v\n", inputFiles[result.index], result.err)
@@ -140,13 +171,19 @@ func main() {
 		}
 		parsedResults[result.index] = result.robot
 	}
-	
+
 	// Add results sequentially to maintain order
 	for i, robot := range parsedResults {
 		results.AddParsedOutput(robot, names[i])
 	}
 
-	reporter := NewDiffReporter(config.Report, config.Title, names, inputFiles)
+	reporter := robotdiff.NewDiffReporter(
+		config.Report,
+		config.Title,
+		names,
+		inputFiles,
+		robotdiff.Templates{HTML: htmlTemplate, CSS: cssTemplate, JS: jsTemplate},
+	)
 	if err := reporter.Report(results, config.HistoryFile, config.HistoryEnable); err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating report: %v\n", err)
 		os.Exit(1)
@@ -169,6 +206,10 @@ func parseArgs() *Config {
 	flag.StringVar(&config.HistoryFile, "history-file", "robotdiff_history.json", "Path to history storage file")
 	flag.StringVar(&config.ViewHistory, "view-history", "", "View history for a specific tag")
 	flag.BoolVar(&config.HistoryEnable, "enable-history", false, "Enable history saving feature in the report")
+	flag.BoolVar(&config.Serve, "serve", false, "Run HTTP server (expects --dir or a directory arg)")
+	flag.StringVar(&config.Dir, "dir", "", "Directory to scan for Robot XML outputs")
+	flag.StringVar(&config.Addr, "addr", ":8080", "HTTP listen address")
+	flag.DurationVar(&config.ScanInterval, "scan-interval", 2*time.Second, "Directory scan interval")
 
 	flag.Usage = func() {
 		fmt.Print(usage)
@@ -176,6 +217,28 @@ func parseArgs() *Config {
 
 	flag.Parse()
 	return config
+}
+
+func shouldServe(config *Config, args []string) bool {
+	if config.Serve {
+		return true
+	}
+	if config.Dir != "" {
+		return true
+	}
+	if len(args) == 1 {
+		fi, err := os.Stat(args[0])
+		return err == nil && fi.IsDir()
+	}
+	return false
+}
+
+func normalizeLocalhostAddr(addr string) string {
+	// Print a friendly localhost URL for default cases.
+	if strings.HasPrefix(addr, ":") {
+		return addr
+	}
+	return addr
 }
 
 func getNames(names []string, paths []string) []string {
@@ -189,491 +252,3 @@ func getNames(names []string, paths []string) []string {
 		len(names), len(paths))
 	return nil
 }
-
-// Robot Framework XML structures
-type Robot struct {
-	XMLName xml.Name `xml:"robot"`
-	Suite   Suite    `xml:"suite"`
-}
-
-type Suite struct {
-	Name   string   `xml:"name,attr"`
-	Suites []Suite  `xml:"suite"`
-	Tests  []Test   `xml:"test"`
-	Status Status   `xml:"status"`
-}
-
-type Test struct {
-	Name   string `xml:"name,attr"`
-	Status Status `xml:"status"`
-}
-
-type Status struct {
-	Status string `xml:"status,attr"`
-}
-
-// DiffResults manages the comparison results
-type DiffResults struct {
-	stats       map[string][]*ItemStatus
-	columnNames []string
-}
-
-func NewDiffResults() *DiffResults {
-	return &DiffResults{
-		stats:       make(map[string][]*ItemStatus, 128), // Pre-allocate for typical test count
-		columnNames: make([]string, 0, 4), // Most comparisons are 2-4 files
-	}
-}
-
-func (dr *DiffResults) AddParsedOutput(robot *Robot, column string) {
-	dr.addSuite(&robot.Suite, "")
-	dr.columnNames = append(dr.columnNames, column)
-
-	// Add missing statuses for all rows
-	for name, statuses := range dr.stats {
-		for len(statuses) < len(dr.columnNames) {
-			statuses = append(statuses, &ItemStatus{Name: "N/A", Status: "not_available"})
-		}
-		dr.stats[name] = statuses
-	}
-}
-
-func (dr *DiffResults) addSuite(suite *Suite, parent string) {
-	longname := suite.Name
-	if parent != "" {
-		longname = parent + "." + suite.Name
-	}
-
-	dr.addToStats(longname, suite.Status.Status)
-
-	for i := range suite.Suites {
-		dr.addSuite(&suite.Suites[i], longname)
-	}
-
-	for _, test := range suite.Tests {
-		testLongname := longname + "." + test.Name
-		dr.addToStats(testLongname, test.Status.Status)
-	}
-}
-
-func (dr *DiffResults) addToStats(name, status string) {
-	normalizedName := strings.ToLower(name)
-	statuses, exists := dr.stats[normalizedName]
-
-	if !exists {
-		// Pre-allocate with capacity
-		statuses = make([]*ItemStatus, len(dr.columnNames), len(dr.columnNames)+4)
-		// Add missing statuses for previous columns
-		for i := 0; i < len(dr.columnNames); i++ {
-			statuses[i] = &ItemStatus{Name: "N/A", Status: "not_available"}
-		}
-	}
-
-	// Avoid repeated string operations - cache common values
-	var statusUpper, statusLower string
-	switch status {
-	case "PASS", "pass":
-		statusUpper, statusLower = "PASS", "pass"
-	case "FAIL", "fail":
-		statusUpper, statusLower = "FAIL", "fail"
-	default:
-		statusUpper = strings.ToUpper(status)
-		statusLower = strings.ToLower(status)
-	}
-
-	statuses = append(statuses, &ItemStatus{
-		Name:   statusUpper,
-		Status: statusLower,
-	})
-
-	dr.stats[normalizedName] = statuses
-}
-
-func (dr *DiffResults) Rows() []*RowStatus {
-	// Pre-allocate exact size
-	names := make([]string, 0, len(dr.stats))
-
-	for name := range dr.stats {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
-	// Build a map to track which items have children
-	hasChildren := make(map[string]bool)
-	childrenCount := make(map[string]int)
-	
-	for _, name := range names {
-		parts := strings.Split(name, ".")
-		for i := 1; i < len(parts); i++ {
-			parent := strings.Join(parts[:i], ".")
-			hasChildren[parent] = true
-			childrenCount[parent]++
-		}
-	}
-
-	rows := make([]*RowStatus, 0, len(names))
-	for _, name := range names {
-		// A row should be included if:
-		// 1. It has no children (it's a test/leaf node), OR
-		// 2. It has children that have no children (it's a suite with direct test children)
-		
-		if !hasChildren[name] {
-			// This is a leaf node (test) - include it
-			rows = append(rows, NewRowStatus(name, dr.stats[name]))
-		} else {
-			// This has children - check if any of its direct children are leaf nodes
-			hasLeafChildren := false
-			for _, otherName := range names {
-				if strings.HasPrefix(otherName, name+".") {
-					// Check if it's a direct child
-					remainder := strings.TrimPrefix(otherName, name+".")
-					if !strings.Contains(remainder, ".") {
-						// It's a direct child - check if it's a leaf
-						if !hasChildren[otherName] {
-							hasLeafChildren = true
-							break
-						}
-					}
-				}
-			}
-			
-			// Only include if it has direct leaf children (actual test suite)
-			if hasLeafChildren {
-				rows = append(rows, NewRowStatus(name, dr.stats[name]))
-			}
-		}
-	}
-
-	return rows
-}
-
-// ItemStatus represents the status of a single item in one run
-type ItemStatus struct {
-	Name   string
-	Status string
-}
-
-// RowStatus represents a single row in the diff report
-type RowStatus struct {
-	Name     string
-	statuses []*ItemStatus
-}
-
-func NewRowStatus(name string, statuses []*ItemStatus) *RowStatus {
-	return &RowStatus{
-		Name:     name,
-		statuses: statuses,
-	}
-}
-
-func (rs *RowStatus) Status() string {
-	passed := false
-	failed := false
-	missing := false
-
-	for _, stat := range rs.statuses {
-		if stat.Name == "PASS" {
-			passed = true
-		} else if stat.Name == "FAIL" {
-			failed = true
-		} else if stat.Name == "N/A" {
-			missing = true
-		}
-	}
-
-	if passed && failed {
-		return "diff"
-	}
-	if missing {
-		return "missing"
-	}
-	if passed {
-		return "all_passed"
-	}
-	return "all_failed"
-}
-
-func (rs *RowStatus) Explanation() string {
-	switch rs.Status() {
-	case "all_passed":
-		return "All passed"
-	case "all_failed":
-		return "All failed"
-	case "missing":
-		return "Missing items"
-	case "diff":
-		return "Different statuses"
-	default:
-		return ""
-	}
-}
-
-func (rs *RowStatus) Statuses() []*ItemStatus {
-	return rs.statuses
-}
-
-// JSON output structures
-type JSONTest struct {
-	Name    string   `json:"name"`
-	Results []string `json:"results"`
-}
-
-type JSONSuite struct {
-	Name  string     `json:"name"`
-	Tests []JSONTest `json:"tests"`
-}
-
-type JSONReport struct {
-	Title       string      `json:"title"`
-	Columns     []string    `json:"columns"`
-	ReportLinks []string    `json:"reportLinks"`
-	Suites      []JSONSuite `json:"suites"`
-}
-
-// DiffReporter generates the HTML report
-type DiffReporter struct {
-	OutPath    string
-	title      string
-	columns    []string
-	inputFiles []string
-}
-
-func NewDiffReporter(outpath, title string, columns []string, inputFiles []string) *DiffReporter {
-	if outpath == "" {
-		outpath = "robotdiff.html"
-	}
-	absPath, _ := filepath.Abs(outpath)
-	return &DiffReporter{
-		OutPath:    absPath,
-		title:      title,
-		columns:    columns,
-		inputFiles: inputFiles,
-	}
-}
-
-func (dr *DiffReporter) detectReportLinks() []string {
-	links := make([]string, len(dr.inputFiles))
-	for i, inputFile := range dr.inputFiles {
-		absPath, err := filepath.Abs(inputFile)
-		if err != nil {
-			links[i] = ""
-			continue
-		}
-		
-		dir := filepath.Dir(absPath)
-		reportPath := filepath.Join(dir, "report.html")
-		
-		if _, err := os.Stat(reportPath); err == nil {
-			// File exists, create file:// URL
-			links[i] = "file://" + reportPath
-		} else {
-			links[i] = ""
-		}
-	}
-	return links
-}
-
-// History structures
-type HistoryEntry struct {
-	Timestamp time.Time   `json:"timestamp"`
-	Tag       string      `json:"tag"`
-	Title     string      `json:"title"`
-	Columns   []string    `json:"columns"`
-	Suites    []JSONSuite `json:"suites"`
-}
-
-type HistoryStore struct {
-	Entries []HistoryEntry `json:"entries"`
-}
-
-func LoadHistory(path string) (*HistoryStore, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return &HistoryStore{Entries: []HistoryEntry{}}, nil
-		}
-		return nil, err
-	}
-	
-	var store HistoryStore
-	if err := json.Unmarshal(data, &store); err != nil {
-		return nil, err
-	}
-	return &store, nil
-}
-
-func (hs *HistoryStore) Save(path string) error {
-	data, err := json.MarshalIndent(hs, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0644)
-}
-
-func (hs *HistoryStore) AddEntry(entry HistoryEntry) {
-	hs.Entries = append(hs.Entries, entry)
-	// Keep entries sorted by timestamp (newest first)
-	sort.Slice(hs.Entries, func(i, j int) bool {
-		return hs.Entries[i].Timestamp.After(hs.Entries[j].Timestamp)
-	})
-}
-
-func (hs *HistoryStore) GetByTag(tag string) []HistoryEntry {
-	var results []HistoryEntry
-	for _, entry := range hs.Entries {
-		if entry.Tag == tag {
-			results = append(results, entry)
-		}
-	}
-	return results
-}
-
-func (hs *HistoryStore) GetAllTags() []string {
-	tagSet := make(map[string]bool)
-	for _, entry := range hs.Entries {
-		tagSet[entry.Tag] = true
-	}
-	
-	var tags []string
-	for tag := range tagSet {
-		tags = append(tags, tag)
-	}
-	sort.Strings(tags)
-	return tags
-}
-
-func (dr *DiffReporter) Report(results *DiffResults, historyPath string, enableHistory bool) error {
-	// Build JSON data structure
-	jsonData := dr.buildJSONData(results)
-	
-	// Load history if enabled
-	var historyData *HistoryStore
-	if enableHistory && historyPath != "" {
-		var err error
-		historyData, err = LoadHistory(historyPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: Failed to load history: %v\n", err)
-			historyData = &HistoryStore{Entries: []HistoryEntry{}}
-		}
-	}
-	
-	// Create HTML file with embedded JSON, CSS, and JS
-	f, err := os.Create(dr.OutPath)
-	if err != nil {
-		return fmt.Errorf("failed to create report file: %w", err)
-	}
-	defer f.Close()
-
-	// Serialize JSON
-	jsonBytes, err := json.Marshal(jsonData)
-	if err != nil {
-		return fmt.Errorf("failed to marshal JSON: %w", err)
-	}
-	
-	// Serialize history data
-	historyBytes := []byte("null")
-	if historyData != nil {
-		historyBytes, err = json.Marshal(historyData)
-		if err != nil {
-			return fmt.Errorf("failed to marshal history: %w", err)
-		}
-	}
-
-	// Build single-file HTML with embedded CSS and JS
-	html := strings.ReplaceAll(htmlTemplate, "{{TITLE}}", dr.title)
-	html = strings.ReplaceAll(html, "{{DATA}}", string(jsonBytes))
-	html = strings.ReplaceAll(html, "{{HISTORY}}", string(historyBytes))
-	html = strings.ReplaceAll(html, "{{HISTORY_FILE}}", historyPath)
-	html = strings.ReplaceAll(html, "{{HISTORY_ENABLED}}", fmt.Sprintf("%t", enableHistory))
-	html = strings.ReplaceAll(html, `<link rel="stylesheet" href="styles.css" />`, "<style>"+cssTemplate+"</style>")
-	html = strings.ReplaceAll(html, `<script src="app.js"></script>`, "<script>"+jsTemplate+"</script>")
-	
-	_, err = f.WriteString(html)
-	return err
-}
-
-func (dr *DiffReporter) buildJSONData(results *DiffResults) *JSONReport {
-	// Build suite hierarchy from the filtered rows
-	suiteMap := make(map[string]*JSONSuite)
-	var suiteOrder []string
-	
-	rows := results.Rows()
-	
-	// Detect report links
-	reportLinks := dr.detectReportLinks()
-	
-	// Build a set of all row names to identify suites vs tests
-	rowSet := make(map[string]bool)
-	for _, row := range rows {
-		rowSet[row.Name] = true
-	}
-	
-	// Identify which rows are suites (have children in the row set)
-	suiteNames := make(map[string]bool)
-	for _, row := range rows {
-		for _, otherRow := range rows {
-			if otherRow.Name != row.Name && strings.HasPrefix(otherRow.Name, row.Name+".") {
-				suiteNames[row.Name] = true
-				break
-			}
-		}
-	}
-	
-	// Process only test rows (not suite rows)
-	for _, row := range rows {
-		// Skip if this is a suite row
-		if suiteNames[row.Name] {
-			continue
-		}
-		
-		// This is a test row - extract suite and test name
-		lastDot := strings.LastIndex(row.Name, ".")
-		if lastDot < 0 {
-			continue // Skip root items
-		}
-		
-		suiteName := row.Name[:lastDot]
-		testName := row.Name[lastDot+1:]
-		
-		// Create suite if it doesn't exist
-		if _, exists := suiteMap[suiteName]; !exists {
-			suiteMap[suiteName] = &JSONSuite{
-				Name:  suiteName,
-				Tests: make([]JSONTest, 0),
-			}
-			suiteOrder = append(suiteOrder, suiteName)
-		}
-		
-		// Add test to suite
-		testResults := make([]string, len(row.Statuses()))
-		for i, status := range row.Statuses() {
-			if status.Name == "N/A" {
-				testResults[i] = "MISSING"
-			} else {
-				testResults[i] = status.Name // "PASS" or "FAIL"
-			}
-		}
-		
-		suiteMap[suiteName].Tests = append(suiteMap[suiteName].Tests, JSONTest{
-			Name:    testName,
-			Results: testResults,
-		})
-	}
-	
-	// Build ordered suite list - only include suites that have tests
-	suites := make([]JSONSuite, 0, len(suiteOrder))
-	for _, name := range suiteOrder {
-		suite := suiteMap[name]
-		if len(suite.Tests) > 0 {
-			suites = append(suites, *suite)
-		}
-	}
-	
-	return &JSONReport{
-		Title:       dr.title,
-		Columns:     dr.columns,
-		ReportLinks: reportLinks,
-		Suites:      suites,
-	}
-}
-

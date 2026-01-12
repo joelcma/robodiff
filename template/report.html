@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Expires" content="Mon, 20 Jan 2001 20:01:21 GMT" />
+    <title>{{TITLE}}</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1 id="title"></h1>
+        <div class="stats" id="stats"></div>
+      </div>
+      <div class="controls">
+        <div class="control-group">
+          <button class="btn" id="showComparison" title="Show comparison view">
+            📊 Comparison
+          </button>
+          <button class="btn" id="showHistory" title="View historical trends">
+            📈 History
+          </button>
+        </div>
+        <div class="control-group" id="comparisonControls">
+          <button class="btn" id="collapseAll" title="Collapse all test suites">
+            ⊟ Collapse All
+          </button>
+          <button class="btn" id="expandAll" title="Expand all test suites">
+            ⊞ Expand All
+          </button>
+        </div>
+        <div class="control-group" id="comparisonControls2">
+          <button class="btn active" id="showAll" title="Show all tests">
+            ● Show All
+          </button>
+          <button
+            class="btn"
+            id="showDiff"
+            title="Show only tests with differences"
+          >
+            ⚠ Differences Only
+          </button>
+          <button class="btn" id="showFailed" title="Show only failed tests">
+            ✗ Failed Only
+          </button>
+        </div>
+        <div class="control-group">
+          <input
+            type="text"
+            class="search-box"
+            id="searchBox"
+            placeholder="🔍 Search tests..."
+          />
+        </div>
+        <div class="control-group" id="historyControls" style="display: none">
+          <select class="history-tag-select" id="historyTagSelect">
+            <option value="">Select a tag...</option>
+          </select>
+        </div>
+        <div
+          class="control-group"
+          id="saveToHistoryGroup"
+          style="display: none"
+        >
+          <select
+            class="column-select"
+            id="columnSelect"
+            title="Select which test run to save"
+          >
+            <option value="">Select run to save...</option>
+          </select>
+          <input
+            type="text"
+            class="tag-input"
+            id="tagInput"
+            placeholder="Enter tag (e.g., nightly, release-1.0)"
+          />
+          <button
+            class="btn btn-primary"
+            id="saveToHistory"
+            title="Save this run to history"
+          >
+            💾 Save to History
+          </button>
+        </div>
+      </div>
+      <div class="table-wrapper" id="comparisonView">
+        <table>
+          <thead id="tableHeader"></thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+      <div id="historyView" style="display: none; padding: 40px">
+        <div id="historyContent">
+          <p class="history-placeholder">
+            Select a tag to view historical trends
+          </p>
+        </div>
+      </div>
+    </div>
+    <script>
+      const DATA = {{DATA}};
+      const HISTORY_DATA = {{HISTORY}};
+      const HISTORY_FILE = "{{HISTORY_FILE}}";
+      const HISTORY_ENABLED = {{HISTORY_ENABLED}};
+    </script>
+    <script src="app.js"></script>
+  </body>
+</html>
