@@ -63,6 +63,31 @@ export default function KeywordItem({ keyword, depth }) {
   const [httpModalData, setHttpModalData] = useState(null);
   const [isSending, setIsSending] = useState(false);
 
+  async function tryHttpRequest(payload) {
+    try {
+      setIsSending(true);
+      const res = await fetch("/api/http-try", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        setHttpModalData({
+          error: json?.error || `Request failed (${res.status})`,
+          request: payload,
+        });
+        return;
+      }
+      setHttpModalData(json);
+    } catch (err) {
+      setHttpModalData({ error: String(err), request: payload });
+    } finally {
+      setIsSending(false);
+    }
+  }
+
   const renderedArguments = hasArguments
     ? keyword.arguments.map((arg, i) => {
         const segments = splitTextByJsonAssignments(arg);
@@ -163,26 +188,8 @@ export default function KeywordItem({ keyword, depth }) {
                   e.preventDefault();
                   e.stopPropagation();
 
-                  try {
-                    setIsSending(true);
-                    const res = await fetch("/api/http-try", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify(requestInfo),
-                    });
-
-                    const json = await res.json().catch(() => null);
-                    if (!res.ok) {
-                      setHttpModalData({
-                        error: json?.error || `Request failed (${res.status})`,
-                      });
-                      return;
-                    }
-                    setHttpModalData(json);
-                  } catch (err) {
-                    setHttpModalData({ error: String(err) });
-                  } finally {
-                    setIsSending(false);
+                  if (requestInfo) {
+                    await tryHttpRequest(requestInfo);
                   }
                 }}
               >
@@ -197,6 +204,13 @@ export default function KeywordItem({ keyword, depth }) {
         <HttpResponseModal
           data={httpModalData}
           onClose={() => setHttpModalData(null)}
+          isResending={isSending}
+          onResend={async () => {
+            const payload = httpModalData?.request || requestInfo;
+            if (payload) {
+              await tryHttpRequest(payload);
+            }
+          }}
         />
       ) : null}
 

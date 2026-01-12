@@ -13,7 +13,12 @@ function tryPrettifyJson(text) {
   }
 }
 
-export default function HttpResponseModal({ data, onClose }) {
+export default function HttpResponseModal({
+  data,
+  onClose,
+  onResend,
+  isResending,
+}) {
   const request = data?.request;
   const response = data?.response;
   const [showHeaders, setShowHeaders] = useState(false);
@@ -30,7 +35,22 @@ export default function HttpResponseModal({ data, onClose }) {
         className="modal http-response-modal"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2>HTTP Response</h2>
+        <div className="http-response-title-row">
+          <h2 className="http-response-title">HTTP Response</h2>
+          <div className="http-response-title-actions">
+            <button
+              type="button"
+              className="json-copy-btn"
+              title="Re-send the same request"
+              disabled={
+                !request?.method || !request?.url || !onResend || isResending
+              }
+              onClick={() => onResend?.()}
+            >
+              {isResending ? "Sending…" : "Re-send"}
+            </button>
+          </div>
+        </div>
 
         {data?.error ? (
           <div className="http-response-error">{String(data.error)}</div>

@@ -684,6 +684,24 @@ button.primary {
   width: min(900px, 92vw);
 }
 
+.http-response-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.http-response-title {
+  margin: 0;
+}
+
+.http-response-title-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .http-response-meta {
   margin: 0 0 16px 0;
   padding: 12px;
