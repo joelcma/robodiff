@@ -1,4 +1,4 @@
-export default function Sidebar({ suites }) {
+export default function Sidebar({ suites, activeSuite }) {
   // Sort suites: ones with failures first, then the rest in original order
   const sortedSuites = suites
     ? [...suites].sort((a, b) => {
@@ -28,11 +28,12 @@ export default function Sidebar({ suites }) {
           const passCount = suite.tests.filter(
             (t) => t.status.toUpperCase() === "PASS"
           ).length;
+          const isActive = activeSuite === suite.name;
 
           return (
             <button
               key={suite.name}
-              className="sidebar-item"
+              className={`sidebar-item ${isActive ? "active" : ""}`}
               onClick={() => {
                 document
                   .getElementById(`suite-${suite.name}`)

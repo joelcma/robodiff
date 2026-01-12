@@ -12,9 +12,11 @@ export default function SingleRunView({
 }) {
   const [testDetails, setTestDetails] = useState(null);
   const [loadingTest, setLoadingTest] = useState(null);
+  const [activeSuite, setActiveSuite] = useState(null);
 
-  const handleTestClick = async (testName) => {
+  const handleTestClick = async (testName, suiteName) => {
     setLoadingTest(testName);
+    setActiveSuite(suiteName);
 
     const payload = {
       runId: singleRun.runId,
@@ -51,7 +53,7 @@ export default function SingleRunView({
         testDetails ? "with-details-panel" : ""
       }`}
     >
-      <Sidebar suites={singleRun.suites} />
+      <Sidebar suites={singleRun.suites} activeSuite={activeSuite} />
 
       <div className="main-content">
         <div className="panel-header">
@@ -125,7 +127,7 @@ export default function SingleRunView({
                           className={`test-row ${test.status.toLowerCase()} ${
                             loadingTest === test.name ? "loading" : ""
                           }`}
-                          onClick={() => handleTestClick(test.name)}
+                          onClick={() => handleTestClick(test.name, suite.name)}
                           style={{ cursor: "pointer" }}
                           title="Click to view test details"
                         >
@@ -155,7 +157,10 @@ export default function SingleRunView({
 
       <TestDetailsPanel
         testDetails={testDetails}
-        onClose={() => setTestDetails(null)}
+        onClose={() => {
+          setTestDetails(null);
+          setActiveSuite(null);
+        }}
       />
     </section>
   );
