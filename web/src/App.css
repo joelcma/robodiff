@@ -261,6 +261,13 @@
   flex-wrap: wrap;
 }
 
+.sidebar-header-stats {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
 .badge {
   display: inline-block;
   padding: 2px 6px;

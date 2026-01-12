@@ -15,10 +15,26 @@ export default function Sidebar({ suites, activeSuite }) {
       })
     : [];
 
+  const totals = (suites || []).reduce(
+    (acc, suite) => {
+      for (const t of suite.tests || []) {
+        const s = String(t.status || "").toUpperCase();
+        if (s === "PASS") acc.pass += 1;
+        else if (s === "FAIL") acc.fail += 1;
+      }
+      return acc;
+    },
+    { pass: 0, fail: 0 }
+  );
+
   return (
     <div className="sidebar">
       <div className="sidebar-header">
         <h3>Suites</h3>
+        <div className="sidebar-header-stats">
+          <span className="badge fail-badge">{totals.fail} ✗</span>
+          <span className="badge pass-badge">{totals.pass} ✓</span>
+        </div>
       </div>
       <nav className="sidebar-nav">
         {sortedSuites.map((suite) => {
