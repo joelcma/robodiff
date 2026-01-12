@@ -2,6 +2,30 @@ import { useState } from "react";
 import MessageItem from "./MessageItem";
 import { formatTime } from "../utils/timeFormatter";
 import { splitTextByJsonAssignments } from "../utils/jsonPrettify";
+import {
+  buildCurlFromText,
+  extractHttpRequestFromText,
+} from "../utils/httpCurl";
+import HttpResponseModal from "./HttpResponseModal";
+
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return;
+  } catch {
+    // fall back
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "absolute";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
+}
 
 export default function KeywordItem({ keyword, depth }) {
   const indent = depth * 20;
@@ -25,6 +49,20 @@ export default function KeywordItem({ keyword, depth }) {
     ? "FAIL"
     : keyword.status || "PASS";
 
+  const requestMessageText = hasMessages
+    ? keyword.messages.find((m) => buildCurlFromText(m.text))?.text
+    : null;
+  const curlInfo = requestMessageText
+    ? buildCurlFromText(requestMessageText)
+    : null;
+
+  const requestInfo = requestMessageText
+    ? extractHttpRequestFromText(requestMessageText)
+    : null;
+
+  const [httpModalData, setHttpModalData] = useState(null);
+  const [isSending, setIsSending] = useState(false);
+
   const renderedArguments = hasArguments
     ? keyword.arguments.map((arg, i) => {
         const segments = splitTextByJsonAssignments(arg);
@@ -34,8 +72,44 @@ export default function KeywordItem({ keyword, depth }) {
               if (seg.type === "json") {
                 return (
                   <span key={`${i}-${j}`} className="argument-json-block">
-                    <span className="argument-key">{seg.key}=</span>
+                    <span className="argument-key-row">
+                      <span className="argument-key">{seg.key}=</span>
+                      <button
+                        type="button"
+                        className="json-copy-btn"
+                        title="Copy JSON"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          copyToClipboard(seg.pretty);
+                        }}
+                      >
+                        Copy
+                      </button>
+                    </span>
                     <pre className="argument-json">{seg.pretty}</pre>
+                  </span>
+                );
+              }
+              if (seg.type === "copy") {
+                return (
+                  <span key={`${i}-${j}`} className="argument-json-block">
+                    <span className="argument-key-row">
+                      <span className="argument-key">{seg.key}=</span>
+                      <button
+                        type="button"
+                        className="json-copy-btn"
+                        title={seg.label || "Copy"}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          copyToClipboard(seg.value);
+                        }}
+                      >
+                        Copy
+                      </button>
+                    </span>
+                    <div className="argument-copy-value">{seg.value}</div>
                   </span>
                 );
               }
@@ -65,7 +139,66 @@ export default function KeywordItem({ keyword, depth }) {
             {formatTime(keyword.start)} → {formatTime(keyword.end)}
           </span>
         )}
+        {curlInfo?.curl ? (
+          <span className="keyword-header-actions">
+            <button
+              type="button"
+              className="json-copy-btn"
+              title="Copy as curl"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                copyToClipboard(curlInfo.curl);
+              }}
+            >
+              Curl
+            </button>
+            {requestInfo ? (
+              <button
+                type="button"
+                className="json-copy-btn"
+                title="Send HTTP request"
+                disabled={isSending}
+                onClick={async (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+
+                  try {
+                    setIsSending(true);
+                    const res = await fetch("/api/http-try", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(requestInfo),
+                    });
+
+                    const json = await res.json().catch(() => null);
+                    if (!res.ok) {
+                      setHttpModalData({
+                        error: json?.error || `Request failed (${res.status})`,
+                      });
+                      return;
+                    }
+                    setHttpModalData(json);
+                  } catch (err) {
+                    setHttpModalData({ error: String(err) });
+                  } finally {
+                    setIsSending(false);
+                  }
+                }}
+              >
+                Send
+              </button>
+            ) : null}
+          </span>
+        ) : null}
       </div>
+
+      {httpModalData ? (
+        <HttpResponseModal
+          data={httpModalData}
+          onClose={() => setHttpModalData(null)}
+        />
+      ) : null}
 
       {!isCollapsed && (
         <>

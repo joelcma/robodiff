@@ -16,43 +16,64 @@ export function splitTextByJsonAssignments(text) {
     const keyStartIndex = findKeyStart(text, eqIndex - 1);
     const key = text.slice(keyStartIndex, eqIndex);
 
+    // 1) JSON blocks
     const jsonCandidate = findJsonStartAfterEquals(text, eqIndex + 1);
-    if (!jsonCandidate) {
-      cursor = eqIndex + 1;
-      continue;
+    if (jsonCandidate) {
+      const extracted = extractBalancedJson(text, jsonCandidate.jsonStartIndex);
+      if (extracted) {
+        const parsed = parseJsonish(extracted.jsonText);
+        if (parsed) {
+          if (keyStartIndex > cursor) {
+            segments.push({
+              type: "text",
+              value: text.slice(cursor, keyStartIndex),
+            });
+          }
+
+          segments.push({
+            type: "json",
+            key,
+            pretty: JSON.stringify(parsed, null, 2),
+          });
+
+          let nextCursor = extracted.endIndex;
+          // If the JSON was inside quotes, skip the closing quote too.
+          if (
+            jsonCandidate.wrapperQuote &&
+            text[nextCursor] === jsonCandidate.wrapperQuote
+          ) {
+            nextCursor += 1;
+          }
+          cursor = nextCursor;
+          continue;
+        }
+      }
     }
 
-    const extracted = extractBalancedJson(text, jsonCandidate.jsonStartIndex);
-    if (!extracted) {
-      cursor = eqIndex + 1;
-      continue;
+    // 2) Copyable URL-ish values (url=..., path_url=...)
+    if (isUrlKey(key)) {
+      const extractedUrl = extractSimpleValue(text, eqIndex + 1);
+      if (extractedUrl) {
+        if (keyStartIndex > cursor) {
+          segments.push({
+            type: "text",
+            value: text.slice(cursor, keyStartIndex),
+          });
+        }
+
+        segments.push({
+          type: "copy",
+          key,
+          value: extractedUrl.value,
+          label: "Copy URL",
+        });
+
+        cursor = extractedUrl.endIndex;
+        continue;
+      }
     }
 
-    const parsed = parseJsonish(extracted.jsonText);
-    if (!parsed) {
-      cursor = eqIndex + 1;
-      continue;
-    }
-
-    if (keyStartIndex > cursor) {
-      segments.push({ type: "text", value: text.slice(cursor, keyStartIndex) });
-    }
-
-    segments.push({
-      type: "json",
-      key,
-      pretty: JSON.stringify(parsed, null, 2),
-    });
-
-    let nextCursor = extracted.endIndex;
-    // If the JSON was inside quotes, skip the closing quote too.
-    if (
-      jsonCandidate.wrapperQuote &&
-      text[nextCursor] === jsonCandidate.wrapperQuote
-    ) {
-      nextCursor += 1;
-    }
-    cursor = nextCursor;
+    cursor = eqIndex + 1;
   }
 
   if (cursor < text.length) {
@@ -61,6 +82,47 @@ export function splitTextByJsonAssignments(text) {
 
   if (segments.length === 0) return [{ type: "text", value: text }];
   return segments;
+}
+
+function isUrlKey(key) {
+  if (!key) return false;
+  const lower = key.toLowerCase();
+  return lower === "url" || lower === "path_url" || lower.endsWith("url");
+}
+
+function extractSimpleValue(text, startIndex) {
+  let i = startIndex;
+  while (i < text.length && /\s/.test(text[i])) i++;
+
+  if (i >= text.length) return null;
+
+  // Support quoted values: url="..." / url='...'
+  if (text[i] === '"' || text[i] === "'") {
+    const quote = text[i];
+    i++;
+    const valueStart = i;
+    while (i < text.length) {
+      const ch = text[i];
+      if (ch === quote) {
+        return {
+          value: text.slice(valueStart, i),
+          endIndex: i + 1,
+        };
+      }
+      i++;
+    }
+    return null;
+  }
+
+  // Unquoted: stop at whitespace (or common separators like comma)
+  const valueStart = i;
+  while (i < text.length && !/\s/.test(text[i]) && text[i] !== ",") i++;
+  if (i === valueStart) return null;
+
+  return {
+    value: text.slice(valueStart, i),
+    endIndex: i,
+  };
 }
 
 function findKeyStart(text, indexBeforeEquals) {
