@@ -245,7 +245,7 @@ func (s *Server) handleHTTPTry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpReq, err := http.NewRequest(method, u.String(), bytes.NewReader([]byte(req.Body)))
+	httpReq, err := http.NewRequestWithContext(r.Context(), method, u.String(), bytes.NewReader([]byte(req.Body)))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "failed to build request")
 		return
@@ -262,7 +262,7 @@ func (s *Server) handleHTTPTry(w http.ResponseWriter, r *http.Request) {
 		httpReq.Header.Set(k, v)
 	}
 
-	client := &http.Client{Timeout: 20 * time.Second}
+	client := &http.Client{Timeout: 0}
 	start := time.Now()
 	resp, err := client.Do(httpReq)
 	duration := time.Since(start)
