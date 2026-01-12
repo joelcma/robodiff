@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -97,82 +98,115 @@ func (s *RunStore) GetRuns(ids []string) (columns []string, inputFiles []string,
 }
 
 func (s *RunStore) scanOnce() {
-	_ = filepath.WalkDir(s.dir, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return nil
+	// Build a fresh map each scan so deleted runs disappear.
+	updated := make(map[string]*runEntry, 128)
+
+	s.mu.RLock()
+	prev := make(map[string]*runEntry, len(s.runs))
+	for k, v := range s.runs {
+		prev[k] = v
+	}
+	s.mu.RUnlock()
+
+	const maxDepth = 3 // allow nested layouts like root/run/output.xml or root/env/run/output.xml
+
+	var scanDir func(absDir string, depth int)
+	scanDir = func(absDir string, depth int) {
+		if depth > maxDepth {
+			return
 		}
-		if d.IsDir() {
-			// Allow scanning the root dir and first-level subdirs only
-			rel, err := filepath.Rel(s.dir, path)
+
+		entries, err := os.ReadDir(absDir)
+		if err != nil {
+			return
+		}
+
+		for _, ent := range entries {
+			name := ent.Name()
+			absPath := filepath.Join(absDir, name)
+
+			isDir := ent.IsDir()
+			if !isDir && (ent.Type()&fs.ModeSymlink) != 0 {
+				// Follow symlinked directories (common when results are linked in).
+				if st, err := os.Stat(absPath); err == nil && st.IsDir() {
+					isDir = true
+				}
+			}
+			if isDir {
+				scanDir(absPath, depth+1)
+				continue
+			}
+
+			lower := strings.ToLower(name)
+			if !strings.HasSuffix(lower, ".xml") {
+				continue
+			}
+
+			// Heuristic: prefer Robot's canonical output file.
+			// This avoids trying to parse every XML file (xunit.xml, junit.xml, etc.)
+			// which is common in result folders.
+			if lower != "output.xml" {
+				continue
+			}
+
+			fi, err := os.Stat(absPath)
 			if err != nil {
-				return filepath.SkipDir
+				continue
 			}
-			// Count directory depth (number of separators)
-			depth := 0
-			if rel != "." {
-				depth = strings.Count(rel, string(filepath.Separator)) + 1
+
+			abs, err := filepath.Abs(absPath)
+			if err != nil {
+				continue
 			}
-			// Skip directories deeper than level 1
-			if depth > 1 {
-				return filepath.SkipDir
+
+			rel, err := filepath.Rel(s.dir, abs)
+			if err != nil {
+				rel = name
 			}
-			return nil
-		}
-		if !strings.HasSuffix(strings.ToLower(d.Name()), ".xml") {
-			return nil
-		}
 
-		fi, err := d.Info()
-		if err != nil {
-			return nil
+			id := stableID(abs)
+
+			// Use directory name for output.xml so multiple runs don't all show as "output".
+			runName := filepath.Base(filepath.Dir(abs))
+			if runName == "" || runName == string(filepath.Separator) {
+				runName = strings.TrimSuffix(name, filepath.Ext(name))
+			}
+
+			if existing, ok := prev[id]; ok && existing != nil {
+				if existing.info.ModTime.Equal(fi.ModTime()) && existing.info.Size == fi.Size() {
+					updated[id] = existing
+					continue
+				}
+			}
+
+			robot, err := robotdiff.ParseRobotXMLFile(abs)
+			if err != nil {
+				continue
+			}
+			pass, fail, total := robotdiff.CountTests(&robot.Suite)
+
+			updated[id] = &runEntry{
+				abs:   abs,
+				robot: robot,
+				info: RunInfo{
+					ID:        id,
+					Name:      runName,
+					RelPath:   filepath.ToSlash(rel),
+					ModTime:   fi.ModTime(),
+					Size:      fi.Size(),
+					TestCount: total,
+					PassCount: pass,
+					FailCount: fail,
+				},
+			}
 		}
+	}
 
-		abs, err := filepath.Abs(path)
-		if err != nil {
-			return nil
-		}
+	scanDir(s.dir, 0)
 
-		rel, err := filepath.Rel(s.dir, abs)
-		if err != nil {
-			rel = d.Name()
-		}
-
-		id := stableID(abs)
-		name := strings.TrimSuffix(d.Name(), filepath.Ext(d.Name()))
-
-		s.mu.RLock()
-		existing, ok := s.runs[id]
-		s.mu.RUnlock()
-		if ok && existing.info.ModTime.Equal(fi.ModTime()) && existing.info.Size == fi.Size() {
-			return nil
-		}
-
-		robot, err := robotdiff.ParseRobotXMLFile(abs)
-		if err != nil {
-			return nil
-		}
-		pass, fail, total := robotdiff.CountTests(&robot.Suite)
-
-		entry := &runEntry{
-			abs:   abs,
-			robot: robot,
-			info: RunInfo{
-				ID:        id,
-				Name:      name,
-				RelPath:   filepath.ToSlash(rel),
-				ModTime:   fi.ModTime(),
-				Size:      fi.Size(),
-				TestCount: total,
-				PassCount: pass,
-				FailCount: fail,
-			},
-		}
-
-		s.mu.Lock()
-		s.runs[id] = entry
-		s.mu.Unlock()
-		return nil
-	})
+	s.mu.Lock()
+	s.runs = updated
+	s.mu.Unlock()
 }
 
 func stableID(s string) string {
@@ -215,4 +249,3 @@ func findTestInSuite(suite *robotdiff.Suite, testName string) *robotdiff.Test {
 
 	return nil
 }
-
