@@ -1,6 +1,7 @@
 import { useState } from "react";
 import MessageItem from "./MessageItem";
 import { formatTime } from "../utils/timeFormatter";
+import { splitTextByJsonAssignments } from "../utils/jsonPrettify";
 
 export default function KeywordItem({ keyword, depth }) {
   const indent = depth * 20;
@@ -16,6 +17,35 @@ export default function KeywordItem({ keyword, depth }) {
 
   const hasContent = hasArguments || hasMessages || hasChildren;
 
+  // Determine effective status: if any child failed, show as failed
+  const effectiveStatus = hasFailInBranch
+    ? "fail"
+    : keyword.status?.toLowerCase() || "pass";
+  const effectiveStatusLabel = hasFailInBranch
+    ? "FAIL"
+    : keyword.status || "PASS";
+
+  const renderedArguments = hasArguments
+    ? keyword.arguments.map((arg, i) => {
+        const segments = splitTextByJsonAssignments(arg);
+        return (
+          <div key={i} className="argument-item">
+            {segments.map((seg, j) => {
+              if (seg.type === "json") {
+                return (
+                  <span key={`${i}-${j}`} className="argument-json-block">
+                    <span className="argument-key">{seg.key}=</span>
+                    <pre className="argument-json">{seg.pretty}</pre>
+                  </span>
+                );
+              }
+              return <span key={`${i}-${j}`}>{seg.value}</span>;
+            })}
+          </div>
+        );
+      })
+    : null;
+
   return (
     <div className="keyword-item" style={{ marginLeft: `${indent}px` }}>
       <div
@@ -25,12 +55,8 @@ export default function KeywordItem({ keyword, depth }) {
         {hasContent && (
           <span className="keyword-toggle">{isCollapsed ? "▶" : "▼"}</span>
         )}
-        <span
-          className={`keyword-status ${
-            keyword.status?.toLowerCase() || "pass"
-          }`}
-        >
-          {keyword.status || "PASS"}
+        <span className={`keyword-status ${effectiveStatus}`}>
+          {effectiveStatusLabel}
         </span>
         <span className="keyword-type">{keyword.type}</span>
         <span className="keyword-name">{keyword.name}</span>
@@ -44,13 +70,7 @@ export default function KeywordItem({ keyword, depth }) {
       {!isCollapsed && (
         <>
           {hasArguments && (
-            <div className="keyword-arguments">
-              {keyword.arguments.map((arg, i) => (
-                <div key={i} className="argument-item">
-                  {arg}
-                </div>
-              ))}
-            </div>
+            <div className="keyword-arguments">{renderedArguments}</div>
           )}
 
           {hasMessages && (
