@@ -34,18 +34,29 @@ export default function KeywordItem({ keyword, depth }) {
   const hasArguments = keyword.arguments && keyword.arguments.length > 0;
   const hasFail = keyword.status?.toLowerCase() === "fail";
 
-  // Collapse by default unless this keyword or any child has a failure
-  const hasFailInBranch =
+  const isFailureBubbleBoundary = isFailureBubblingBoundaryKeyword(keyword);
+
+  // Default expansion policy:
+  // - Only expand root-level branches that contain failures.
+  // - For nested keywords, don't auto-expand just because something below failed.
+  //   (You can still drill down manually; failing keywords will expand when reached.)
+  const hasFailInBranchForExpand =
     hasFail || (hasChildren && hasFailureInChildren(keyword.keywords));
-  const [isCollapsed, setIsCollapsed] = useState(!hasFailInBranch);
+  const defaultCollapsed = depth === 0 ? !hasFailInBranchForExpand : !hasFail;
+  const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
 
   const hasContent = hasArguments || hasMessages || hasChildren;
 
-  // Determine effective status: if any child failed, show as failed
-  const effectiveStatus = hasFailInBranch
+  // Determine effective status: bubble failures from children unless this keyword
+  // is a boundary (e.g., Run Keyword And Return Status).
+  const hasFailInBranchForStatus = isFailureBubbleBoundary
+    ? hasFail
+    : hasFail || (hasChildren && hasFailureInChildren(keyword.keywords, true));
+
+  const effectiveStatus = hasFailInBranchForStatus
     ? "fail"
     : keyword.status?.toLowerCase() || "pass";
-  const effectiveStatusLabel = hasFailInBranch
+  const effectiveStatusLabel = hasFailInBranchForStatus
     ? "FAIL"
     : keyword.status || "PASS";
 
@@ -241,13 +252,25 @@ export default function KeywordItem({ keyword, depth }) {
   );
 }
 
-function hasFailureInChildren(keywords) {
+function hasFailureInChildren(keywords, stopAtBubbleBoundaries = false) {
   if (!keywords || keywords.length === 0) return false;
 
   for (const kw of keywords) {
     if (kw.status?.toLowerCase() === "fail") return true;
-    if (hasFailureInChildren(kw.keywords)) return true;
+
+    if (stopAtBubbleBoundaries && isFailureBubblingBoundaryKeyword(kw)) {
+      continue;
+    }
+
+    if (hasFailureInChildren(kw.keywords, stopAtBubbleBoundaries)) return true;
   }
 
   return false;
+}
+
+function isFailureBubblingBoundaryKeyword(keyword) {
+  const name = String(keyword?.name || "")
+    .trim()
+    .toLowerCase();
+  return name === "run keyword and return status";
 }

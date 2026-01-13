@@ -2,31 +2,33 @@
 
 ## Project Structure & Module Organization
 
-- Go CLI: `main.go` contains the `robotdiff` entrypoint and core diff/report generation.
-- Embedded report UI: `template/` holds `report.html`, `styles.css`, and `app.js` which are embedded via Go `//go:embed` to produce a single self-contained HTML report.
-- Sample inputs: `test1.xml`, `test2.xml` are example Robot Framework output files.
-- Generated output: default report file is `robotdiff.html`.
+- Go CLI: `main.go` contains the `robotdiff` entrypoint (server mode).
+- Go backend: `backend/server/` is the HTTP API + static file serving for the React build.
+- Robot parsing/diff: `backend/diff/` parses Robot output.xml and computes comparisons.
+- React frontend: `web/` contains the UI (Vite dev server; production build to `web/dist/`).
 
 Key commands:
 
 - `go build -o robotdiff` — builds the local binary.
-- `./robotdiff test1.xml test2.xml` — generates `robotdiff.html` from inputs.
+- `./robotdiff --dir /path/to/results` — starts the server.
+- `cd web && npm install && npm run dev` — runs the UI dev server.
+- `cd web && npm run build` — builds UI assets to `web/dist/`.
 - `go install ./@latest` — installs the CLI into `$(go env GOPATH)/bin` (Go 1.17+).
 
 ## Coding Style & Naming Conventions
 
 - Go: use `gofmt` formatting (tabs for indentation) and idiomatic naming (exported `PascalCase`, local `camelCase`). Prefer small, focused helpers over deeply nested logic.
-- Front-end assets: keep `template/app.js` readable and function-oriented; avoid adding dependencies unless there’s a clear payoff since the report is intended to be offline-ready.
+- Frontend: keep `web/src` components small and function-oriented; avoid adding dependencies unless there’s a clear payoff.
 
 ## Testing Guidelines
 
-- JavaScript harness: open `template/test.html` in a browser; it runs assertions from `template/app.test.js`.
-- Go tests: none yet. New logic should ideally be covered with `go test ./...` once tests are introduced (e.g., status calculation, row-building).
+- Frontend: `cd web && npm run lint` and `cd web && npm run build`.
+- Go tests: none yet. New logic should ideally be covered with `go test ./...` once tests are introduced.
 
 Naming:
 
 - Go tests: `*_test.go` (e.g., `row_status_test.go`).
-- JS tests: keep related assertions in `template/app.test.js`.
+- JS tests: none currently.
 
 ## Commit & Pull Request Guidelines
 
@@ -36,4 +38,3 @@ Naming:
 ## Security & Configuration Tips
 
 - Treat Robot XML inputs as untrusted: avoid introducing template injection paths and keep output HTML self-contained.
-- History mode writes to `--history-file`; don’t commit generated history JSON or `robotdiff.html` unless explicitly required.

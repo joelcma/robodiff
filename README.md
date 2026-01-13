@@ -45,21 +45,14 @@ Then open http://localhost:8080 in your browser.
 ## Usage / Flags
 
 ```
-Usage: robotdiff [options] <directory>
+Usage: robotdiff [options] [<directory>]
 
-Server mode (directory argument):
-  Starts HTTP server and watches directory for Robot Framework XML files
+Starts HTTP server and watches directory for Robot Framework XML files.
 
-  --addr <address>    HTTP server address (default: :8080)
-  --dir <path>        Directory to watch (alternative to positional argument)
-
-Legacy mode (multiple XML files):
-  Generates static HTML report (old behavior, still supported)
-
-  -r, --report <file>       HTML report file (default: robotdiff.html)
-  -n, --name <name>         Name for test runs; repeat for each input file
-  -t, --title <title>       Report title (default: "Test Run Diff Report")
-  -h, --help                Show help
+  --addr <address>       HTTP server address (default: :8080)
+  --dir <path>           Directory to watch (alternative to positional argument)
+  --scan-interval <dur>  Directory scan interval (default: 2s)
+  -h, --help             Show help
 ```
 
 Examples:
@@ -71,8 +64,7 @@ Examples:
 # Custom port
 ./robotdiff --addr :3000 /tmp/robot_runs
 
-# Legacy: generate static HTML report
-./robotdiff test1.xml test2.xml
+
 ```
 
 ## Features
@@ -189,7 +181,7 @@ The Go binary serves the built React app from `web/dist/`.
 │       ├── robot.go        # XML structure definitions
 │       ├── parse.go        # XML parsing
 │       ├── diff.go         # Comparison logic
-│       └── report.go       # Legacy HTML report generation
+│       └── report.go       # JSON diff payload builder
 ├── web/
 │   ├── src/
 │   │   ├── App.jsx         # Main application
@@ -197,7 +189,6 @@ The Go binary serves the built React app from `web/dist/`.
 │   │   └── utils/          # Helper functions
 │   ├── dist/               # Built assets (gitignored)
 │   └── package.json
-├── template/               # Legacy template files
 └── AGENTS.md              # Contributor guide
 ```
 
