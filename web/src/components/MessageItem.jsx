@@ -1,6 +1,10 @@
 import { formatTime } from "../utils/timeFormatter";
-import { splitTextByJsonAssignments } from "../utils/jsonPrettify";
+import {
+  splitTextByJsonAssignments,
+  tryExtractJsonishComparison,
+} from "../utils/jsonPrettify";
 import { buildCurlFromText } from "../utils/httpCurl";
+import { diffAlignLines } from "../utils/lineDiff";
 
 async function copyToClipboard(text) {
   try {
@@ -28,10 +32,22 @@ function isUrlKey(key) {
 }
 
 export default function MessageItem({ message }) {
+  const comparison = tryExtractJsonishComparison(message.text);
+  const isFailLevel =
+    String(message.level || "").toLowerCase() === "fail" ||
+    String(message.level || "").toLowerCase() === "error";
+  const shouldShowDiff =
+    Boolean(comparison) && isFailLevel && comparison.operator === "!=";
+
+  const diff = shouldShowDiff
+    ? diffAlignLines(comparison.left.pretty, comparison.right.pretty)
+    : null;
   const segments = splitTextByJsonAssignments(message.text);
   const curlInfo = buildCurlFromText(message.text);
   const curl = curlInfo?.curl;
-  let curlButtonShown = false;
+  const firstUrlCopyIndex = segments.findIndex(
+    (s) => s?.type === "copy" && isUrlKey(s.key)
+  );
 
   return (
     <div
@@ -46,12 +62,13 @@ export default function MessageItem({ message }) {
         </span>
       )}
       <span className="message-text">
-        {segments.map((seg, i) => {
-          if (seg.type === "json") {
-            return (
-              <span key={i} className="argument-json-block">
+        {comparison ? (
+          <>
+            {comparison.prefix ? <span>{comparison.prefix}</span> : null}
+            <div className="message-compare keyword-compare">
+              <div className="keyword-compare-side">
                 <span className="argument-key-row">
-                  <span className="argument-key">{seg.key}=</span>
+                  <span className="argument-key">left</span>
                   <button
                     type="button"
                     className="json-copy-btn"
@@ -59,59 +76,148 @@ export default function MessageItem({ message }) {
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      copyToClipboard(seg.pretty);
+                      copyToClipboard(comparison.left.pretty);
                     }}
                   >
                     Copy
                   </button>
                 </span>
-                <pre className="argument-json">{seg.pretty}</pre>
-              </span>
-            );
-          }
-          if (seg.type === "copy") {
-            const isUrl = isUrlKey(seg.key);
-            const showCurl = Boolean(curl) && isUrl && !curlButtonShown;
-            if (showCurl) curlButtonShown = true;
-            return (
-              <span key={i} className="argument-json-block">
+                <pre className="argument-json argument-json-diff">
+                  {diff
+                    ? diff.rows.map((row, i) => (
+                        <div
+                          key={i}
+                          className={`diff-line diff-line-${row.left.type}`}
+                        >
+                          {Array.isArray(row.left.parts)
+                            ? row.left.parts.map((p, j) => (
+                                <span
+                                  key={j}
+                                  className={`diff-ch diff-ch-${p.type}`}
+                                >
+                                  {p.text}
+                                </span>
+                              ))
+                            : row.left.text}
+                        </div>
+                      ))
+                    : comparison.left.pretty}
+                </pre>
+              </div>
+
+              <div className="keyword-compare-operator">
+                {comparison.operator}
+              </div>
+
+              <div className="keyword-compare-side">
                 <span className="argument-key-row">
-                  <span className="argument-key">{seg.key}=</span>
-                  <span className="argument-actions">
+                  <span className="argument-key">right</span>
+                  <button
+                    type="button"
+                    className="json-copy-btn"
+                    title="Copy JSON"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      copyToClipboard(comparison.right.pretty);
+                    }}
+                  >
+                    Copy
+                  </button>
+                </span>
+                <pre className="argument-json argument-json-diff">
+                  {diff
+                    ? diff.rows.map((row, i) => (
+                        <div
+                          key={i}
+                          className={`diff-line diff-line-${row.right.type}`}
+                        >
+                          {Array.isArray(row.right.parts)
+                            ? row.right.parts.map((p, j) => (
+                                <span
+                                  key={j}
+                                  className={`diff-ch diff-ch-${p.type}`}
+                                >
+                                  {p.text}
+                                </span>
+                              ))
+                            : row.right.text}
+                        </div>
+                      ))
+                    : comparison.right.pretty}
+                </pre>
+              </div>
+            </div>
+            {comparison.suffix ? <span>{comparison.suffix}</span> : null}
+          </>
+        ) : (
+          segments.map((seg, i) => {
+            if (seg.type === "json") {
+              return (
+                <span key={i} className="argument-json-block">
+                  <span className="argument-key-row">
+                    <span className="argument-key">{seg.key}=</span>
                     <button
                       type="button"
                       className="json-copy-btn"
-                      title={seg.label || "Copy"}
+                      title="Copy JSON"
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        copyToClipboard(seg.value);
+                        copyToClipboard(seg.pretty);
                       }}
                     >
                       Copy
                     </button>
-                    {showCurl ? (
+                  </span>
+                  <pre className="argument-json">{seg.pretty}</pre>
+                </span>
+              );
+            }
+            if (seg.type === "copy") {
+              const isUrl = isUrlKey(seg.key);
+              const showCurl =
+                Boolean(curl) && isUrl && i === firstUrlCopyIndex;
+              return (
+                <span key={i} className="argument-json-block">
+                  <span className="argument-key-row">
+                    <span className="argument-key">{seg.key}=</span>
+                    <span className="argument-actions">
                       <button
                         type="button"
                         className="json-copy-btn"
-                        title="Copy as curl"
+                        title={seg.label || "Copy"}
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          copyToClipboard(curl);
+                          copyToClipboard(seg.value);
                         }}
                       >
-                        Curl
+                        Copy
                       </button>
-                    ) : null}
+                      {showCurl ? (
+                        <button
+                          type="button"
+                          className="json-copy-btn"
+                          title="Copy as curl"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            copyToClipboard(curl);
+                          }}
+                        >
+                          Curl
+                        </button>
+                      ) : null}
+                    </span>
                   </span>
+                  <div className="argument-copy-value">{seg.value}</div>
                 </span>
-                <div className="argument-copy-value">{seg.value}</div>
-              </span>
-            );
-          }
-          return <span key={i}>{seg.value}</span>;
-        })}
+              );
+            }
+            return <span key={i}>{seg.value}</span>;
+          })
+        )}
       </span>
     </div>
   );

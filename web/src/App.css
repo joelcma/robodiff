@@ -1133,6 +1133,28 @@ input[type="checkbox"] {
   line-height: 1.5;
 }
 
+.keyword-compare {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.keyword-compare-operator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.18);
+  color: #93c5fd;
+  font-weight: 700;
+}
+
+.message-compare {
+  margin-top: 10px;
+}
+
 .argument-key {
   font-weight: 700;
 }
@@ -1186,6 +1208,45 @@ input[type="checkbox"] {
   white-space: pre;
   max-width: 100%;
   box-sizing: border-box;
+}
+
+.argument-json-diff {
+  white-space: pre;
+}
+
+.diff-line {
+  white-space: pre;
+  font-family: inherit;
+  padding: 0 6px;
+  border-radius: 4px;
+}
+
+.diff-line-insert {
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.diff-line-delete {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.diff-line-change {
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.diff-line-empty {
+  opacity: 0.35;
+}
+
+.diff-ch {
+  white-space: pre;
+}
+
+.diff-ch-delete {
+  background: rgba(239, 68, 68, 0.22);
+}
+
+.diff-ch-insert {
+  background: rgba(34, 197, 94, 0.22);
 }
 
 .argument-copy-value {

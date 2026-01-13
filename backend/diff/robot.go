@@ -100,6 +100,7 @@ type Status struct {
 	Status    string `xml:"status,attr"`
 	StartTime string `xml:"starttime,attr"`
 	EndTime   string `xml:"endtime,attr"`
+	Message   string `xml:",chardata"`
 }
 
 // --- Order-preserving unmarshalling for mixed bodies (kw/if/for) ---

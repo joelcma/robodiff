@@ -6,6 +6,6 @@ export function formatTime(timeStr) {
     /(\d{4})(\d{2})(\d{2}) (\d{2}):(\d{2}):(\d{2})\.(\d{3})/
   );
   if (!match) return timeStr;
-  const [, year, month, day, hour, min, sec, ms] = match;
+  const [, , , , hour, min, sec, ms] = match;
   return `${hour}:${min}:${sec}.${ms}`;
 }

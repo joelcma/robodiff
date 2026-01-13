@@ -84,6 +84,132 @@ export function splitTextByJsonAssignments(text) {
   return segments;
 }
 
+// Best-effort prettifier for values that might be JSON or Python-literal-ish.
+// Returns a pretty JSON string, or null if the input can't be parsed.
+export function tryPrettifyJsonishValue(text) {
+  if (typeof text !== "string") return null;
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return null;
+
+  // Handle python bytes prefix like: b'{"a": 1}'
+  if (
+    trimmed.startsWith("b'{") ||
+    trimmed.startsWith('b"{') ||
+    trimmed.startsWith("b'[") ||
+    trimmed.startsWith('b"[')
+  ) {
+    const quote = trimmed[1];
+    const inner = trimmed.slice(2);
+    if (inner.endsWith(quote)) {
+      return tryPrettifyJsonishValue(inner.slice(0, -1));
+    }
+  }
+
+  const parsed = parseJsonish(trimmed);
+  if (!parsed) return null;
+  try {
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return null;
+  }
+}
+
+// Best-effort extractor for comparisons like:
+//   { ... } != { ... }
+//   '{ ... }' != '{ ... }'
+//   b'{ ... }' != b'{ ... }'
+// Returns null if it doesn't look like a JSON-ish comparison.
+export function tryExtractJsonishComparison(text) {
+  if (typeof text !== "string") return null;
+  const source = text;
+  let cursor = 0;
+
+  // Find first JSON-ish value in the string.
+  const left = extractJsonishValueAtOrAfter(source, cursor);
+  if (!left) return null;
+
+  cursor = left.endIndex;
+  while (cursor < source.length && /\s/.test(source[cursor])) cursor++;
+
+  const op = source.startsWith("!=", cursor)
+    ? "!="
+    : source.startsWith("==", cursor)
+    ? "=="
+    : null;
+  if (!op) return null;
+  cursor += op.length;
+  while (cursor < source.length && /\s/.test(source[cursor])) cursor++;
+
+  const right = extractJsonishValueAtOrAfter(source, cursor);
+  if (!right) return null;
+
+  const leftPretty = tryPrettifyJsonishValue(left.value);
+  const rightPretty = tryPrettifyJsonishValue(right.value);
+  if (!leftPretty || !rightPretty) return null;
+
+  return {
+    prefix: source.slice(0, left.startIndex),
+    operator: op,
+    left: { raw: left.value, pretty: leftPretty },
+    right: { raw: right.value, pretty: rightPretty },
+    suffix: source.slice(right.endIndex),
+  };
+}
+
+function extractJsonishValueAtOrAfter(text, startIndex) {
+  // Scan forward to a possible json-ish wrapper or direct {/[.
+  for (let i = startIndex; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "{" || ch === "[") {
+      const extracted = extractBalancedJson(text, i);
+      if (!extracted) continue;
+      return {
+        startIndex: i,
+        endIndex: extracted.endIndex,
+        value: extracted.jsonText,
+      };
+    }
+
+    // quoted: '{...}' or "{...}"
+    if (
+      (ch === "'" || ch === '"') &&
+      (text[i + 1] === "{" || text[i + 1] === "[")
+    ) {
+      const quote = ch;
+      const jsonStart = i + 1;
+      const extracted = extractBalancedJson(text, jsonStart);
+      if (!extracted) continue;
+      let endIndex = extracted.endIndex;
+      if (text[endIndex] === quote) endIndex += 1;
+      return {
+        startIndex: i,
+        endIndex,
+        value: extracted.jsonText,
+      };
+    }
+
+    // python bytes: b'{...}' or b"{...}"
+    if (
+      ch === "b" &&
+      (text[i + 1] === "'" || text[i + 1] === '"') &&
+      (text[i + 2] === "{" || text[i + 2] === "[")
+    ) {
+      const quote = text[i + 1];
+      const jsonStart = i + 2;
+      const extracted = extractBalancedJson(text, jsonStart);
+      if (!extracted) continue;
+      let endIndex = extracted.endIndex;
+      if (text[endIndex] === quote) endIndex += 1;
+      return {
+        startIndex: i,
+        endIndex,
+        value: extracted.jsonText,
+      };
+    }
+  }
+  return null;
+}
+
 function isUrlKey(key) {
   if (!key) return false;
   const lower = key.toLowerCase();

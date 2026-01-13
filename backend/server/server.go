@@ -464,6 +464,7 @@ func buildKeywordsData(keywords []rdiff.Keyword) []map[string]any {
 			"name":      kw.Name,
 			"type":      kw.Type,
 			"status":    kw.Status.Status,
+			"statusMessage": strings.TrimSpace(kw.Status.Message),
 			"start":     kw.Status.StartTime,
 			"end":       kw.Status.EndTime,
 			"arguments": kw.Arguments,
