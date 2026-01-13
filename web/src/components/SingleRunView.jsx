@@ -56,34 +56,36 @@ export default function SingleRunView({
       <Sidebar suites={singleRun.suites} activeSuite={activeSuite} />
 
       <div className="main-content">
-        <div className="panel-header">
-          <h2>{singleRun.title}</h2>
-          <button className="close-btn" onClick={onClose} title="Close (Esc)">
-            ✕
-          </button>
-        </div>
-        <div className="diff-meta">
-          <span className="path-code">{singleRun.file}</span>
-          <div className="filter-buttons">
-            <button
-              className={diffFilter === "all" ? "active" : ""}
-              onClick={() => onFilterChange("all")}
-            >
-              All Tests
-            </button>
-            <button
-              className={diffFilter === "pass" ? "active" : ""}
-              onClick={() => onFilterChange("pass")}
-            >
-              Passed Only
-            </button>
-            <button
-              className={diffFilter === "failures" ? "active" : ""}
-              onClick={() => onFilterChange("failures")}
-            >
-              Failed Only
+        <div className="panel-header-outer">
+          <div class="panel-header">
+            <h2>{singleRun.title}</h2>
+            <div className="diff-meta">
+              <div className="filter-buttons">
+                <button
+                  className={diffFilter === "all" ? "active" : ""}
+                  onClick={() => onFilterChange("all")}
+                >
+                  All Tests
+                </button>
+                <button
+                  className={diffFilter === "pass" ? "active" : ""}
+                  onClick={() => onFilterChange("pass")}
+                >
+                  Passed Only
+                </button>
+                <button
+                  className={diffFilter === "failures" ? "active" : ""}
+                  onClick={() => onFilterChange("failures")}
+                >
+                  Failed Only
+                </button>
+              </div>
+            </div>
+            <button className="close-btn" onClick={onClose} title="Close (Esc)">
+              ✕
             </button>
           </div>
+          <span className="path-code">{singleRun.file}</span>
         </div>
 
         {singleRun.suites?.map((suite) => {
