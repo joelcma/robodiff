@@ -6,6 +6,17 @@ import RunList from "./components/RunList";
 import SingleRunView from "./components/SingleRunView";
 import DiffView from "./components/DiffView";
 
+function calculateTestStatus(results = []) {
+  const list = Array.isArray(results) ? results : [];
+  const hasPass = list.includes("PASS");
+  const hasFail = list.includes("FAIL");
+  const hasMissing = list.includes("MISSING");
+  if (hasPass && hasFail) return "diff";
+  if (hasMissing) return "missing";
+  if (hasPass) return "all_passed";
+  return "all_failed";
+}
+
 function App() {
   const [runs, setRuns] = useState([]);
   const [dir, setDir] = useState("");
@@ -63,7 +74,7 @@ function App() {
           tests = tests.filter((t) => t.results.includes("FAIL"));
         } else if (diffFilter === "diffs") {
           tests = tests.filter((t) => {
-            const st = calculateTestStatus(t.results);
+            const st = calculateTestStatus(t.results || []);
             return st === "diff" || st === "missing";
           });
         }
@@ -176,6 +187,7 @@ function App() {
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedIds, showHelp, diff, singleRun, runs]);
 
   function toggle(id) {
