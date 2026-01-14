@@ -1,13 +1,24 @@
 export default function Sidebar({ suites, activeSuite }) {
+  function normStatus(v) {
+    return String(v || "").trim().toUpperCase();
+  }
+
+  function countSuite(suite) {
+    let pass = 0;
+    let fail = 0;
+    for (const t of suite?.tests || []) {
+      const s = normStatus(t?.status);
+      if (s === "PASS") pass += 1;
+      else if (s === "FAIL") fail += 1;
+    }
+    return { pass, fail };
+  }
+
   // Sort suites: ones with failures first, then the rest in original order
   const sortedSuites = suites
     ? [...suites].sort((a, b) => {
-        const aHasFails = a.tests.some(
-          (t) => t.status.toUpperCase() === "FAIL"
-        );
-        const bHasFails = b.tests.some(
-          (t) => t.status.toUpperCase() === "FAIL"
-        );
+        const aHasFails = (a?.tests || []).some((t) => normStatus(t?.status) === "FAIL");
+        const bHasFails = (b?.tests || []).some((t) => normStatus(t?.status) === "FAIL");
 
         if (aHasFails && !bHasFails) return -1;
         if (!aHasFails && bHasFails) return 1;
@@ -17,11 +28,9 @@ export default function Sidebar({ suites, activeSuite }) {
 
   const totals = (suites || []).reduce(
     (acc, suite) => {
-      for (const t of suite.tests || []) {
-        const s = String(t.status || "").toUpperCase();
-        if (s === "PASS") acc.pass += 1;
-        else if (s === "FAIL") acc.fail += 1;
-      }
+      const c = countSuite(suite);
+      acc.pass += c.pass;
+      acc.fail += c.fail;
       return acc;
     },
     { pass: 0, fail: 0 }
@@ -38,12 +47,7 @@ export default function Sidebar({ suites, activeSuite }) {
       </div>
       <nav className="sidebar-nav">
         {sortedSuites.map((suite) => {
-          const failCount = suite.tests.filter(
-            (t) => t.status.toUpperCase() === "FAIL"
-          ).length;
-          const passCount = suite.tests.filter(
-            (t) => t.status.toUpperCase() === "PASS"
-          ).length;
+          const { fail: failCount, pass: passCount } = countSuite(suite);
           const isActive = activeSuite === suite.name;
 
           return (

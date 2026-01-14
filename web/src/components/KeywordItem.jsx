@@ -106,10 +106,11 @@ export default function KeywordItem({ keyword, depth }) {
           <div key={i} className="argument-item">
             {segments.map((seg, j) => {
               if (seg.type === "json") {
+                const label = seg.key ? `${seg.key}=` : "json";
                 return (
                   <span key={`${i}-${j}`} className="argument-json-block">
                     <span className="argument-key-row">
-                      <span className="argument-key">{seg.key}=</span>
+                      <span className="argument-key">{label}</span>
                       <button
                         type="button"
                         className="json-copy-btn"

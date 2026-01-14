@@ -153,10 +153,11 @@ export default function MessageItem({ message }) {
         ) : (
           segments.map((seg, i) => {
             if (seg.type === "json") {
+              const label = seg.key ? `${seg.key}=` : "json";
               return (
                 <span key={i} className="argument-json-block">
                   <span className="argument-key-row">
-                    <span className="argument-key">{seg.key}=</span>
+                    <span className="argument-key">{label}</span>
                     <button
                       type="button"
                       className="json-copy-btn"

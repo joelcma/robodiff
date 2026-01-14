@@ -48,6 +48,27 @@ export function splitTextByJsonAssignments(text) {
           continue;
         }
       }
+
+    // If the JSON is truncated/unbalanced (common for error bodies with huge stack traces),
+    // try parsing a safe prefix by dropping long trailing fields like "trace".
+    const truncated = tryParseTruncatedJsonAt(text, jsonCandidate.jsonStartIndex);
+    if (truncated) {
+    if (keyStartIndex > cursor) {
+      segments.push({
+        type: "text",
+        value: text.slice(cursor, keyStartIndex),
+      });
+    }
+
+    segments.push({
+      type: "json",
+      key,
+      pretty: JSON.stringify(truncated.parsed, null, 2),
+    });
+
+    cursor = truncated.endIndex;
+    continue;
+    }
     }
 
     // 2) Copyable URL-ish values (url=..., path_url=...)
@@ -80,8 +101,183 @@ export function splitTextByJsonAssignments(text) {
     segments.push({ type: "text", value: text.slice(cursor) });
   }
 
-  if (segments.length === 0) return [{ type: "text", value: text }];
-  return segments;
+  if (segments.length === 0) return splitTextByStandaloneJson(text);
+
+  // Post-process leftover text segments for standalone JSON blocks.
+  const out = [];
+  for (const seg of segments) {
+    if (seg.type !== "text") {
+      out.push(seg);
+      continue;
+    }
+    const parts = splitTextByStandaloneJson(seg.value);
+    // If nothing was split, preserve original segment to avoid churn.
+    if (parts.length === 1 && parts[0].type === "text") out.push(seg);
+    else out.push(...parts);
+  }
+  return out;
+}
+
+function splitTextByStandaloneJson(text) {
+  if (typeof text !== "string" || text.length === 0) {
+    return [{ type: "text", value: text ?? "" }];
+  }
+
+  const segments = [];
+  let cursor = 0;
+
+  while (cursor < text.length) {
+    const start = findJsonStartAtLineBoundary(text, cursor);
+    if (!start) break;
+
+    const extracted = extractBalancedJson(text, start.jsonStartIndex);
+    if (!extracted) {
+      const truncated = tryParseTruncatedJsonAt(text, start.jsonStartIndex);
+      if (!truncated) {
+        cursor = start.jsonStartIndex + 1;
+        continue;
+      }
+
+      if (start.prefixIndex > cursor) {
+        segments.push({ type: "text", value: text.slice(cursor, start.prefixIndex) });
+      }
+
+      segments.push({
+        type: "json",
+        key: "",
+        pretty: JSON.stringify(truncated.parsed, null, 2),
+      });
+
+      cursor = truncated.endIndex;
+      continue;
+    }
+
+    const parsed = parseJsonish(extracted.jsonText);
+    if (!parsed) {
+      const truncated = tryParseTruncatedJsonAt(text, start.jsonStartIndex);
+      if (!truncated) {
+        cursor = start.jsonStartIndex + 1;
+        continue;
+      }
+
+      if (start.prefixIndex > cursor) {
+        segments.push({ type: "text", value: text.slice(cursor, start.prefixIndex) });
+      }
+
+      segments.push({
+        type: "json",
+        key: "",
+        pretty: JSON.stringify(truncated.parsed, null, 2),
+      });
+
+      cursor = truncated.endIndex;
+      continue;
+    }
+
+    if (start.prefixIndex > cursor) {
+      segments.push({ type: "text", value: text.slice(cursor, start.prefixIndex) });
+    }
+
+    segments.push({
+      type: "json",
+      key: "",
+      pretty: JSON.stringify(parsed, null, 2),
+    });
+
+    let nextCursor = extracted.endIndex;
+    if (start.wrapperQuote && text[nextCursor] === start.wrapperQuote) {
+      nextCursor += 1;
+    }
+    cursor = nextCursor;
+  }
+
+  if (cursor < text.length) {
+    segments.push({ type: "text", value: text.slice(cursor) });
+  }
+  return segments.length === 0 ? [{ type: "text", value: text }] : segments;
+}
+
+function findJsonStartAtLineBoundary(text, startIndex) {
+  // Only consider JSON that starts at the beginning of the string or at a new line.
+  // This avoids accidentally grabbing braces from arbitrary prose.
+  for (let i = startIndex; i < text.length; i++) {
+    if (i !== 0 && text[i - 1] !== "\n" && text[i - 1] !== "\r") continue;
+
+    // Skip indentation.
+    let j = i;
+    while (j < text.length && (text[j] === " " || text[j] === "\t")) j++;
+
+    // python bytes prefix: b'{' / b"{"
+    if (text[j] === "b" && (text[j + 1] === "'" || text[j + 1] === '"')) {
+      const quote = text[j + 1];
+      const afterQuote = j + 2;
+      const ch = text[afterQuote];
+      if (ch === "{" || ch === "[") {
+        return { prefixIndex: i, jsonStartIndex: afterQuote, wrapperQuote: quote };
+      }
+    }
+
+    // quoted JSON: '{' or "{"
+    if (text[j] === "'" || text[j] === '"') {
+      const quote = text[j];
+      const afterQuote = j + 1;
+      const ch = text[afterQuote];
+      if (ch === "{" || ch === "[") {
+        return { prefixIndex: i, jsonStartIndex: afterQuote, wrapperQuote: quote };
+      }
+    }
+
+    if (text[j] === "{" || text[j] === "[") {
+      return { prefixIndex: i, jsonStartIndex: j, wrapperQuote: null };
+    }
+  }
+  return null;
+}
+
+function tryParseTruncatedJsonAt(text, startIndex) {
+  // We only attempt this if the value looks like an object.
+  if (text[startIndex] !== "{") return null;
+
+  const lineEnd = findLineEnd(text, startIndex);
+  const candidate = text.slice(startIndex, lineEnd);
+
+  // Common server error payloads:
+  // {"timestamp":...,"status":...,"error":"...","trace":"..."... (TRUNCATED)
+  const fields = ["trace", "stackTrace", "stacktrace"]; // try a few variants
+  let cutIdx = -1;
+  let fieldName = "";
+  for (const f of fields) {
+    const idx = candidate.indexOf(`"${f}"`);
+    if (idx !== -1 && (cutIdx === -1 || idx < cutIdx)) {
+      cutIdx = idx;
+      fieldName = f;
+    }
+  }
+  if (cutIdx === -1) return null;
+
+  // Cut everything from the last comma before the huge field.
+  const commaIdx = candidate.lastIndexOf(",", cutIdx);
+  if (commaIdx === -1) return null;
+
+  let prefix = candidate.slice(0, commaIdx).trimEnd();
+  if (!prefix.endsWith("}")) {
+    prefix = prefix + "}";
+  }
+
+  const parsed = parseJsonish(prefix);
+  if (!parsed) return null;
+
+  // We consumed up to the start of the dropped field (excluding the comma).
+  // Keep the raw tail as plain text so nothing is lost.
+  return { parsed, endIndex: startIndex + commaIdx + 1, droppedField: fieldName };
+}
+
+function findLineEnd(text, startIndex) {
+  for (let i = startIndex; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "\n" || ch === "\r") return i;
+  }
+  return text.length;
 }
 
 // Best-effort prettifier for values that might be JSON or Python-literal-ish.
