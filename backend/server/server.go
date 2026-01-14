@@ -32,6 +32,7 @@ func (s *Server) ListenAndServe() error {
 	mux.HandleFunc("/api/health", s.handleHealth)
 	mux.HandleFunc("/api/config", s.handleConfig)
 	mux.HandleFunc("/api/runs", s.handleRuns)
+	mux.HandleFunc("/api/delete-runs", s.handleDeleteRuns)
 	mux.HandleFunc("/api/run", s.handleRun)
 	mux.HandleFunc("/api/test-details", s.handleTestDetails)
 	mux.HandleFunc("/api/http-try", s.handleHTTPTry)
@@ -78,6 +79,40 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+type deleteRunsRequest struct {
+	RunIDs []string `json:"runIds"`
+}
+
+func (s *Server) handleDeleteRuns(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req deleteRunsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if len(req.RunIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "runIds required")
+		return
+	}
+
+	deleted, err := s.store.DeleteRuns(req.RunIDs)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Refresh immediately so the UI sees the deletion on the next /api/runs.
+	s.store.scanOnce()
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"deleted": deleted,
+	})
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

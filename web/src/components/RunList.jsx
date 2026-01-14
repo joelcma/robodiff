@@ -16,6 +16,8 @@ export default function RunList({
   onSelectFailed,
   onClearSelection,
   onGenerate,
+  onDeleteSelected,
+  deletingRuns,
   loadingDiff,
   sortBy,
   sortDir,
@@ -23,6 +25,24 @@ export default function RunList({
   showActions,
 }) {
   const selectedIds = Array.from(selected);
+
+  function confirmDelete() {
+    if (!onDeleteSelected) return;
+    if (selectedIds.length < 1) return;
+
+    const chosen = runs.filter((r) => selected.has(r.id));
+    const names = chosen
+      .slice(0, 10)
+      .map((r) => `- ${r.name}`)
+      .join("\n");
+    const suffix = chosen.length > 10 ? `\n(and ${chosen.length - 10} more)` : "";
+
+    const ok = window.confirm(
+      `Delete ${selectedIds.length} selected run(s)?\n\nThis deletes the entire run folder(s) from disk and cannot be undone.\n\n${names}${suffix}`
+    );
+    if (!ok) return;
+    onDeleteSelected(selectedIds);
+  }
 
   return (
     <section className="panel">
@@ -72,6 +92,16 @@ export default function RunList({
               ✕ Clear
             </button>
             <button
+              className="secondary"
+              onClick={confirmDelete}
+              disabled={selectedIds.length < 1 || deletingRuns}
+              title="Delete selected runs"
+            >
+              {deletingRuns
+                ? "🗑️ Deleting…"
+                : `🗑️ Delete (${selectedIds.length})`}
+            </button>
+            <button
               className="primary"
               onClick={onGenerate}
               disabled={selectedIds.length < 1 || loadingDiff}
@@ -100,7 +130,20 @@ export default function RunList({
           <table className="runs">
             <thead>
               <tr>
-                <th style={{ width: "40px" }}></th>
+                <th style={{ width: "40px" }}>
+                  <span
+                    style={{
+                      position: "absolute",
+                      left: "-10000px",
+                      top: "auto",
+                      width: "1px",
+                      height: "1px",
+                      overflow: "hidden",
+                    }}
+                  >
+                    Select
+                  </span>
+                </th>
                 <th
                   className={`sortable ${
                     sortBy === "name" ? "sort-active" : ""

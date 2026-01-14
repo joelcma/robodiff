@@ -237,6 +237,110 @@ func (s *RunStore) GetTestDetails(runID, testName string) (*robotdiff.Test, erro
 	return nil, fmt.Errorf("test %q not found in run", testName)
 }
 
+func (s *RunStore) DeleteRuns(ids []string) (deleted int, err error) {
+	ids = uniqueNonEmptyStrings(ids)
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	rootAbs, err := filepath.Abs(s.dir)
+	if err != nil {
+		return 0, fmt.Errorf("resolve root dir: %w", err)
+	}
+	rootReal := rootAbs
+	if r, err := filepath.EvalSymlinks(rootAbs); err == nil {
+		rootReal = r
+	}
+
+	// Copy the run directories while holding the lock; delete outside the lock.
+	runDirs := make([]string, 0, len(ids))
+	s.mu.RLock()
+	for _, id := range ids {
+		e := s.runs[id]
+		if e == nil {
+			continue
+		}
+		runDirs = append(runDirs, filepath.Dir(e.abs))
+	}
+	s.mu.RUnlock()
+
+	for _, dir := range runDirs {
+		abs, err := filepath.Abs(dir)
+		if err != nil {
+			return deleted, fmt.Errorf("resolve run dir: %w", err)
+		}
+		real := abs
+		if r, err := filepath.EvalSymlinks(abs); err == nil {
+			real = r
+		}
+
+		if !isSubpath(rootReal, real) {
+			return deleted, fmt.Errorf("refusing to delete outside runs root: %s", real)
+		}
+		if samePath(rootReal, real) {
+			return deleted, fmt.Errorf("refusing to delete runs root: %s", real)
+		}
+
+		st, err := os.Stat(real)
+		if err != nil {
+			// Already gone; treat as no-op.
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return deleted, fmt.Errorf("stat run dir: %w", err)
+		}
+		if !st.IsDir() {
+			return deleted, fmt.Errorf("refusing to delete non-directory: %s", real)
+		}
+
+		if err := os.RemoveAll(real); err != nil {
+			return deleted, fmt.Errorf("delete run dir: %w", err)
+		}
+		deleted++
+	}
+
+	return deleted, nil
+}
+
+func uniqueNonEmptyStrings(in []string) []string {
+	out := make([]string, 0, len(in))
+	seen := make(map[string]struct{}, len(in))
+	for _, s := range in {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
+}
+
+func isSubpath(base, target string) bool {
+	rel, err := filepath.Rel(base, target)
+	if err != nil {
+		return false
+	}
+	if rel == "." {
+		return true
+	}
+	sep := string(filepath.Separator)
+	return !strings.HasPrefix(rel, ".."+sep) && rel != ".."
+}
+
+func samePath(a, b string) bool {
+	ca := filepath.Clean(a)
+	cb := filepath.Clean(b)
+	if ca == cb {
+		return true
+	}
+	// Best-effort case-insensitive comparison for macOS default FS behavior.
+	return strings.EqualFold(ca, cb)
+}
+
 func findTestInSuite(suite *robotdiff.Suite, testName string) *robotdiff.Test {
 	// Check tests in current suite
 	for i := range suite.Tests {

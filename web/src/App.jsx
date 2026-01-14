@@ -26,6 +26,7 @@ function App() {
   const [singleRun, setSingleRun] = useState(null);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [loadingDiff, setLoadingDiff] = useState(false);
+  const [deletingRuns, setDeletingRuns] = useState(false);
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("modTime");
@@ -146,6 +147,35 @@ function App() {
     }
   }
 
+  async function deleteSelectedRuns(ids) {
+    const runIds = Array.isArray(ids) ? ids : selectedIds;
+    if (runIds.length < 1) return;
+
+    setDeletingRuns(true);
+    setError("");
+    try {
+      const res = await fetch("/api/delete-runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runIds }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok)
+        throw new Error(data?.error || `Delete failed (${res.status})`);
+
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const id of runIds) next.delete(id);
+        return next;
+      });
+      await refreshRuns();
+    } catch (e) {
+      setError(e?.message || String(e));
+    } finally {
+      setDeletingRuns(false);
+    }
+  }
+
   useEffect(() => {
     refreshRuns();
     const t = setInterval(refreshRuns, 2000);
@@ -259,6 +289,8 @@ function App() {
           onSelectFailed={selectFailed}
           onClearSelection={clearSelection}
           onGenerate={generateDiff}
+          onDeleteSelected={deleteSelectedRuns}
+          deletingRuns={deletingRuns}
           loadingDiff={loadingDiff}
           sortBy={sortBy}
           sortDir={sortDir}
