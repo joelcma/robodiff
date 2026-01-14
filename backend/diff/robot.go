@@ -11,6 +11,41 @@ import (
 type Robot struct {
 	XMLName xml.Name `xml:"robot"`
 	Suite   Suite    `xml:"suite"`
+	Statistics *Statistics `xml:"statistics"`
+}
+
+// Statistics mirrors the <statistics> section near the end of output.xml.
+// We currently only rely on the <total> numbers ("All Tests") for accurate
+// pass/fail/skip counts.
+type Statistics struct {
+	Total TotalStats `xml:"total"`
+}
+
+type TotalStats struct {
+	Stats []Stat `xml:"stat"`
+}
+
+type Stat struct {
+	Pass int    `xml:"pass,attr"`
+	Fail int    `xml:"fail,attr"`
+	Skip int    `xml:"skip,attr"`
+	Name string `xml:",chardata"`
+}
+
+func (t TotalStats) AllTests() (pass, fail, skip int, ok bool) {
+	if len(t.Stats) == 0 {
+		return 0, 0, 0, false
+	}
+	if len(t.Stats) == 1 {
+		s := t.Stats[0]
+		return s.Pass, s.Fail, s.Skip, true
+	}
+	for _, s := range t.Stats {
+		if strings.EqualFold(strings.TrimSpace(s.Name), "All Tests") {
+			return s.Pass, s.Fail, s.Skip, true
+		}
+	}
+	return 0, 0, 0, false
 }
 
 type Suite struct {

@@ -184,6 +184,11 @@ func (s *RunStore) scanOnce() {
 				continue
 			}
 			pass, fail, total := robotdiff.CountTests(&robot.Suite)
+			if robot.Statistics != nil {
+				if p, f, sk, ok := robot.Statistics.Total.AllTests(); ok {
+					pass, fail, total = p, f, p+f+sk
+				}
+			}
 
 			updated[id] = &runEntry{
 				abs:   abs,
