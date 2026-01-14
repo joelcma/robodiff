@@ -1273,8 +1273,9 @@ input[type="checkbox"] {
 
 .message-item {
   display: flex;
-  gap: 12px;
-  align-items: flex-start;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
   padding: 10px 14px;
   background: transparent;
   border-radius: 6px;
@@ -1282,6 +1283,12 @@ input[type="checkbox"] {
   border-left: 3px solid transparent;
   margin-bottom: 6px;
   line-height: 1.5;
+}
+
+.message-meta {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
 }
 
 .message-item.message-info {
@@ -1303,7 +1310,6 @@ input[type="checkbox"] {
   font-weight: 700;
   font-size: 0.85em;
   text-transform: uppercase;
-  min-width: 50px;
 }
 
 .message-item.message-info .message-level {
@@ -1323,7 +1329,6 @@ input[type="checkbox"] {
   color: #6b7280;
   font-size: 0.85em;
   font-family: "Courier New", monospace;
-  min-width: 85px;
 }
 
 .message-text {

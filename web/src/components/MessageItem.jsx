@@ -55,13 +55,15 @@ export default function MessageItem({ message }) {
         message.level?.toLowerCase() || "info"
       }`}
     >
-      <span className="message-level">{message.level}</span>
-      {message.timestamp && (
-        <span className="message-timestamp">
-          {formatTime(message.timestamp)}
-        </span>
-      )}
-      <span className="message-text">
+      <div className="message-meta">
+        <span className="message-level">{message.level}</span>
+        {message.timestamp && (
+          <span className="message-timestamp">
+            {formatTime(message.timestamp)}
+          </span>
+        )}
+      </div>
+      <div className="message-text">
         {comparison ? (
           <>
             {comparison.prefix ? <span>{comparison.prefix}</span> : null}
@@ -219,7 +221,7 @@ export default function MessageItem({ message }) {
             return <span key={i}>{seg.value}</span>;
           })
         )}
-      </span>
+      </div>
     </div>
   );
 }
