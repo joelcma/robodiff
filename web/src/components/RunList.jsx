@@ -35,7 +35,8 @@ export default function RunList({
       .slice(0, 10)
       .map((r) => `- ${r.name}`)
       .join("\n");
-    const suffix = chosen.length > 10 ? `\n(and ${chosen.length - 10} more)` : "";
+    const suffix =
+      chosen.length > 10 ? `\n(and ${chosen.length - 10} more)` : "";
 
     const ok = window.confirm(
       `Delete ${selectedIds.length} selected run(s)?\n\nThis deletes the entire run folder(s) from disk and cannot be undone.\n\n${names}${suffix}`

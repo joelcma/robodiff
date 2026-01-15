@@ -1,6 +1,8 @@
 export default function Sidebar({ suites, activeSuite }) {
   function normStatus(v) {
-    return String(v || "").trim().toUpperCase();
+    return String(v || "")
+      .trim()
+      .toUpperCase();
   }
 
   function countSuite(suite) {
@@ -17,8 +19,12 @@ export default function Sidebar({ suites, activeSuite }) {
   // Sort suites: ones with failures first, then the rest in original order
   const sortedSuites = suites
     ? [...suites].sort((a, b) => {
-        const aHasFails = (a?.tests || []).some((t) => normStatus(t?.status) === "FAIL");
-        const bHasFails = (b?.tests || []).some((t) => normStatus(t?.status) === "FAIL");
+        const aHasFails = (a?.tests || []).some(
+          (t) => normStatus(t?.status) === "FAIL"
+        );
+        const bHasFails = (b?.tests || []).some(
+          (t) => normStatus(t?.status) === "FAIL"
+        );
 
         if (aHasFails && !bHasFails) return -1;
         if (!aHasFails && bHasFails) return 1;

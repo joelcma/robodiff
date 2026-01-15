@@ -5,6 +5,7 @@ import { splitTextByJsonAssignments } from "../utils/jsonPrettify";
 import {
   buildCurlFromText,
   extractHttpRequestFromText,
+  isHttpRequestMessage,
 } from "../utils/httpCurl";
 import HttpResponseModal from "./HttpResponseModal";
 
@@ -33,6 +34,8 @@ export default function KeywordItem({ keyword, depth }) {
   const hasMessages = keyword.messages && keyword.messages.length > 0;
   const hasArguments = keyword.arguments && keyword.arguments.length > 0;
   const hasFail = keyword.status?.toLowerCase() === "fail";
+
+  const apiRequestCount = countHttpRequestMessagesInBranch(keyword);
 
   const isFailureBubbleBoundary = isFailureBubblingBoundaryKeyword(keyword);
 
@@ -170,7 +173,14 @@ export default function KeywordItem({ keyword, depth }) {
           {effectiveStatusLabel}
         </span>
         <span className="keyword-type">{keyword.type}</span>
-        <span className="keyword-name">{keyword.name}</span>
+        <span className="keyword-name">
+          {keyword.name}
+          {apiRequestCount > 0 ? (
+            <span className="api-pill">
+              {apiRequestCount === 1 ? "API" : `API (${apiRequestCount})`}
+            </span>
+          ) : null}
+        </span>
         {keyword.start && (
           <span className="keyword-time">
             {formatTime(keyword.start)} → {formatTime(keyword.end)}
@@ -266,6 +276,44 @@ function hasFailureInChildren(keywords, stopAtBubbleBoundaries = false) {
     if (hasFailureInChildren(kw.keywords, stopAtBubbleBoundaries)) return true;
   }
 
+  return false;
+}
+
+function hasHttpRequestInKeyword(keyword) {
+  const msgs = keyword?.messages || [];
+  for (const m of msgs) {
+    if (isHttpRequestMessage(m?.text)) return true;
+  }
+  return false;
+}
+
+function countHttpRequestMessagesInKeyword(keyword) {
+  let count = 0;
+  const msgs = keyword?.messages || [];
+  for (const m of msgs) {
+    if (isHttpRequestMessage(m?.text)) count += 1;
+  }
+  return count;
+}
+
+function countHttpRequestMessagesInBranch(keyword) {
+  if (!keyword) return 0;
+
+  let count = countHttpRequestMessagesInKeyword(keyword);
+  const children = keyword?.keywords || [];
+  for (const child of children) {
+    count += countHttpRequestMessagesInBranch(child);
+  }
+
+  return count;
+}
+
+function hasHttpRequestInChildren(keywords) {
+  if (!keywords || keywords.length === 0) return false;
+  for (const kw of keywords) {
+    if (hasHttpRequestInKeyword(kw)) return true;
+    if (kw?.keywords && hasHttpRequestInChildren(kw.keywords)) return true;
+  }
   return false;
 }
 

@@ -49,26 +49,29 @@ export function splitTextByJsonAssignments(text) {
         }
       }
 
-    // If the JSON is truncated/unbalanced (common for error bodies with huge stack traces),
-    // try parsing a safe prefix by dropping long trailing fields like "trace".
-    const truncated = tryParseTruncatedJsonAt(text, jsonCandidate.jsonStartIndex);
-    if (truncated) {
-    if (keyStartIndex > cursor) {
-      segments.push({
-        type: "text",
-        value: text.slice(cursor, keyStartIndex),
-      });
-    }
+      // If the JSON is truncated/unbalanced (common for error bodies with huge stack traces),
+      // try parsing a safe prefix by dropping long trailing fields like "trace".
+      const truncated = tryParseTruncatedJsonAt(
+        text,
+        jsonCandidate.jsonStartIndex
+      );
+      if (truncated) {
+        if (keyStartIndex > cursor) {
+          segments.push({
+            type: "text",
+            value: text.slice(cursor, keyStartIndex),
+          });
+        }
 
-    segments.push({
-      type: "json",
-      key,
-      pretty: JSON.stringify(truncated.parsed, null, 2),
-    });
+        segments.push({
+          type: "json",
+          key,
+          pretty: JSON.stringify(truncated.parsed, null, 2),
+        });
 
-    cursor = truncated.endIndex;
-    continue;
-    }
+        cursor = truncated.endIndex;
+        continue;
+      }
     }
 
     // 2) Copyable URL-ish values (url=..., path_url=...)
@@ -139,7 +142,10 @@ function splitTextByStandaloneJson(text) {
       }
 
       if (start.prefixIndex > cursor) {
-        segments.push({ type: "text", value: text.slice(cursor, start.prefixIndex) });
+        segments.push({
+          type: "text",
+          value: text.slice(cursor, start.prefixIndex),
+        });
       }
 
       segments.push({
@@ -161,7 +167,10 @@ function splitTextByStandaloneJson(text) {
       }
 
       if (start.prefixIndex > cursor) {
-        segments.push({ type: "text", value: text.slice(cursor, start.prefixIndex) });
+        segments.push({
+          type: "text",
+          value: text.slice(cursor, start.prefixIndex),
+        });
       }
 
       segments.push({
@@ -175,7 +184,10 @@ function splitTextByStandaloneJson(text) {
     }
 
     if (start.prefixIndex > cursor) {
-      segments.push({ type: "text", value: text.slice(cursor, start.prefixIndex) });
+      segments.push({
+        type: "text",
+        value: text.slice(cursor, start.prefixIndex),
+      });
     }
 
     segments.push({
@@ -213,7 +225,11 @@ function findJsonStartAtLineBoundary(text, startIndex) {
       const afterQuote = j + 2;
       const ch = text[afterQuote];
       if (ch === "{" || ch === "[") {
-        return { prefixIndex: i, jsonStartIndex: afterQuote, wrapperQuote: quote };
+        return {
+          prefixIndex: i,
+          jsonStartIndex: afterQuote,
+          wrapperQuote: quote,
+        };
       }
     }
 
@@ -223,7 +239,11 @@ function findJsonStartAtLineBoundary(text, startIndex) {
       const afterQuote = j + 1;
       const ch = text[afterQuote];
       if (ch === "{" || ch === "[") {
-        return { prefixIndex: i, jsonStartIndex: afterQuote, wrapperQuote: quote };
+        return {
+          prefixIndex: i,
+          jsonStartIndex: afterQuote,
+          wrapperQuote: quote,
+        };
       }
     }
 
@@ -269,7 +289,11 @@ function tryParseTruncatedJsonAt(text, startIndex) {
 
   // We consumed up to the start of the dropped field (excluding the comma).
   // Keep the raw tail as plain text so nothing is lost.
-  return { parsed, endIndex: startIndex + commaIdx + 1, droppedField: fieldName };
+  return {
+    parsed,
+    endIndex: startIndex + commaIdx + 1,
+    droppedField: fieldName,
+  };
 }
 
 function findLineEnd(text, startIndex) {
