@@ -19,6 +19,32 @@ export function splitTextByJsonAssignments(text) {
     // 1) JSON blocks
     const jsonCandidate = findJsonStartAfterEquals(text, eqIndex + 1);
     if (jsonCandidate) {
+      // If the value is inside quotes (including python bytes literals like b"..."),
+      // extract the full quoted payload, unescape it, then parse.
+      if (
+        jsonCandidate.wrapperQuote &&
+        jsonCandidate.wrapperStartIndex != null
+      ) {
+        const wrapped = tryParseJsonishWrappedValue(text, jsonCandidate);
+        if (wrapped) {
+          if (keyStartIndex > cursor) {
+            segments.push({
+              type: "text",
+              value: text.slice(cursor, keyStartIndex),
+            });
+          }
+
+          segments.push({
+            type: "json",
+            key,
+            pretty: JSON.stringify(wrapped.parsed, null, 2),
+          });
+
+          cursor = wrapped.endIndex;
+          continue;
+        }
+      }
+
       const extracted = extractBalancedJson(text, jsonCandidate.jsonStartIndex);
       if (extracted) {
         const parsed = parseJsonish(extracted.jsonText);
@@ -133,6 +159,28 @@ function splitTextByStandaloneJson(text) {
     const start = findJsonStartAtLineBoundary(text, cursor);
     if (!start) break;
 
+    // If the JSON is inside quotes (including python bytes literals), parse the unescaped payload.
+    if (start.wrapperQuote && start.wrapperStartIndex != null) {
+      const wrapped = tryParseJsonishWrappedValue(text, start);
+      if (wrapped) {
+        if (start.prefixIndex > cursor) {
+          segments.push({
+            type: "text",
+            value: text.slice(cursor, start.prefixIndex),
+          });
+        }
+
+        segments.push({
+          type: "json",
+          key: "",
+          pretty: JSON.stringify(wrapped.parsed, null, 2),
+        });
+
+        cursor = wrapped.endIndex;
+        continue;
+      }
+    }
+
     const extracted = extractBalancedJson(text, start.jsonStartIndex);
     if (!extracted) {
       const truncated = tryParseTruncatedJsonAt(text, start.jsonStartIndex);
@@ -227,8 +275,10 @@ function findJsonStartAtLineBoundary(text, startIndex) {
       if (ch === "{" || ch === "[") {
         return {
           prefixIndex: i,
+          wrapperStartIndex: j + 1,
           jsonStartIndex: afterQuote,
           wrapperQuote: quote,
+          isBytes: true,
         };
       }
     }
@@ -241,14 +291,22 @@ function findJsonStartAtLineBoundary(text, startIndex) {
       if (ch === "{" || ch === "[") {
         return {
           prefixIndex: i,
+          wrapperStartIndex: j,
           jsonStartIndex: afterQuote,
           wrapperQuote: quote,
+          isBytes: false,
         };
       }
     }
 
     if (text[j] === "{" || text[j] === "[") {
-      return { prefixIndex: i, jsonStartIndex: j, wrapperQuote: null };
+      return {
+        prefixIndex: i,
+        wrapperStartIndex: null,
+        jsonStartIndex: j,
+        wrapperQuote: null,
+        isBytes: false,
+      };
     }
   }
   return null;
@@ -310,6 +368,15 @@ export function tryPrettifyJsonishValue(text) {
   if (typeof text !== "string") return null;
   const trimmed = text.trim();
   if (trimmed.length === 0) return null;
+
+  // Unwrap python bytes/quoted strings like:
+  //   b"[{\"a\":1}]"  -> [{"a":1}]
+  //   b'[{"a":1}]'      -> [{"a":1}]
+  //   '{"a": 1}'         -> {"a": 1}
+  const unwrapped = unwrapPythonBytesOrQuotedString(trimmed);
+  if (unwrapped != null) {
+    return tryPrettifyJsonishValue(unwrapped);
+  }
 
   // Handle python bytes prefix like: b'{"a": 1}'
   if (
@@ -404,7 +471,7 @@ function extractJsonishValueAtOrAfter(text, startIndex) {
       return {
         startIndex: i,
         endIndex,
-        value: extracted.jsonText,
+        value: text.slice(i, endIndex),
       };
     }
 
@@ -423,7 +490,7 @@ function extractJsonishValueAtOrAfter(text, startIndex) {
       return {
         startIndex: i,
         endIndex,
-        value: extracted.jsonText,
+        value: text.slice(i, endIndex),
       };
     }
   }
@@ -491,7 +558,12 @@ function findJsonStartAfterEquals(text, startIndex) {
     const afterQuote = i + 2;
     const ch = text[afterQuote];
     if (ch === "{" || ch === "[") {
-      return { jsonStartIndex: afterQuote, wrapperQuote: quote };
+      return {
+        wrapperStartIndex: i + 1,
+        jsonStartIndex: afterQuote,
+        wrapperQuote: quote,
+        isBytes: true,
+      };
     }
   }
 
@@ -501,16 +573,149 @@ function findJsonStartAfterEquals(text, startIndex) {
     const afterQuote = i + 1;
     const ch = text[afterQuote];
     if (ch === "{" || ch === "[") {
-      return { jsonStartIndex: afterQuote, wrapperQuote: quote };
+      return {
+        wrapperStartIndex: i,
+        jsonStartIndex: afterQuote,
+        wrapperQuote: quote,
+        isBytes: false,
+      };
     }
   }
 
   // Raw JSON: key={...} / key=[...]
   if (text[i] === "{" || text[i] === "[") {
-    return { jsonStartIndex: i, wrapperQuote: null };
+    return {
+      wrapperStartIndex: null,
+      jsonStartIndex: i,
+      wrapperQuote: null,
+      isBytes: false,
+    };
   }
 
   return null;
+}
+
+function tryParseJsonishWrappedValue(text, info) {
+  const quoteIndex = info.wrapperStartIndex;
+  const quote = info.wrapperQuote;
+  if (quoteIndex == null || !quote) return null;
+
+  const endQuoteIndex = findMatchingQuoteIndex(text, quoteIndex, quote);
+  if (endQuoteIndex === -1) return null;
+
+  const raw = text.slice(quoteIndex + 1, endQuoteIndex);
+  const unescaped = unescapePythonString(raw);
+
+  const parsed = parseJsonish(unescaped.trim());
+  if (parsed) {
+    return { parsed, endIndex: endQuoteIndex + 1 };
+  }
+
+  // If the unescaped content is a truncated JSON object, try parsing a safe prefix.
+  const truncated = tryParseTruncatedJsonString(unescaped);
+  if (truncated) {
+    return { parsed: truncated.parsed, endIndex: endQuoteIndex + 1 };
+  }
+
+  return null;
+}
+
+function findMatchingQuoteIndex(text, quoteStartIndex, quoteChar) {
+  let escape = false;
+  for (let i = quoteStartIndex + 1; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escape = true;
+      continue;
+    }
+    if (ch === quoteChar) return i;
+  }
+  return -1;
+}
+
+function unescapePythonString(value) {
+  if (typeof value !== "string" || value.length === 0) return value;
+
+  // Handle common python escape sequences used in repr() of strings/bytes.
+  return value.replace(
+    /\\(x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|n|r|t|\\|'|")/g,
+    (m, grp) => {
+      if (grp === "n") return "\n";
+      if (grp === "r") return "\r";
+      if (grp === "t") return "\t";
+      if (grp === "\\") return "\\";
+      if (grp === "'") return "'";
+      if (grp === '"') return '"';
+      if (grp[0] === "x")
+        return String.fromCharCode(parseInt(grp.slice(1), 16));
+      if (grp[0] === "u")
+        return String.fromCharCode(parseInt(grp.slice(1), 16));
+      if (grp[0] === "U") {
+        const codePoint = parseInt(grp.slice(1), 16);
+        try {
+          return String.fromCodePoint(codePoint);
+        } catch {
+          return m;
+        }
+      }
+      return m;
+    }
+  );
+}
+
+function unwrapPythonBytesOrQuotedString(trimmed) {
+  if (typeof trimmed !== "string" || trimmed.length < 2) return null;
+
+  // bytes literal: b'...' or b"..."
+  if (trimmed[0] === "b" && (trimmed[1] === "'" || trimmed[1] === '"')) {
+    const q = trimmed[1];
+    if (trimmed.endsWith(q)) {
+      const inner = trimmed.slice(2, -1);
+      return unescapePythonString(inner);
+    }
+  }
+
+  // quoted string: '...' or "..."
+  if (trimmed[0] === "'" || trimmed[0] === '"') {
+    const q = trimmed[0];
+    if (trimmed.endsWith(q)) {
+      const inner = trimmed.slice(1, -1);
+      return unescapePythonString(inner);
+    }
+  }
+
+  return null;
+}
+
+function tryParseTruncatedJsonString(unescaped) {
+  const trimmed = String(unescaped || "").trim();
+  if (!trimmed.startsWith("{")) return null;
+
+  const fields = ["trace", "stackTrace", "stacktrace"];
+  let cutIdx = -1;
+  let fieldName = "";
+  for (const f of fields) {
+    const idx = trimmed.indexOf(`"${f}"`);
+    if (idx !== -1 && (cutIdx === -1 || idx < cutIdx)) {
+      cutIdx = idx;
+      fieldName = f;
+    }
+  }
+  if (cutIdx === -1) return null;
+
+  const commaIdx = trimmed.lastIndexOf(",", cutIdx);
+  if (commaIdx === -1) return null;
+
+  let prefix = trimmed.slice(0, commaIdx).trimEnd();
+  if (!prefix.endsWith("}")) prefix = prefix + "}";
+
+  const parsed = parseJsonish(prefix);
+  if (!parsed) return null;
+  return { parsed, droppedField: fieldName };
 }
 
 function extractBalancedJson(text, startIndex) {

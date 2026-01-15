@@ -29,7 +29,8 @@ async function copyToClipboard(text) {
 }
 
 export default function KeywordItem({ keyword, depth }) {
-  const indent = depth * 20;
+  // Indentation should shrink slightly with depth to accommodate long chains
+  const indent = Math.max(0, 15 - depth * 3);
   const hasChildren = keyword.keywords && keyword.keywords.length > 0;
   const hasMessages = keyword.messages && keyword.messages.length > 0;
   const hasArguments = keyword.arguments && keyword.arguments.length > 0;
@@ -279,14 +280,6 @@ function hasFailureInChildren(keywords, stopAtBubbleBoundaries = false) {
   return false;
 }
 
-function hasHttpRequestInKeyword(keyword) {
-  const msgs = keyword?.messages || [];
-  for (const m of msgs) {
-    if (isHttpRequestMessage(m?.text)) return true;
-  }
-  return false;
-}
-
 function countHttpRequestMessagesInKeyword(keyword) {
   let count = 0;
   const msgs = keyword?.messages || [];
@@ -306,15 +299,6 @@ function countHttpRequestMessagesInBranch(keyword) {
   }
 
   return count;
-}
-
-function hasHttpRequestInChildren(keywords) {
-  if (!keywords || keywords.length === 0) return false;
-  for (const kw of keywords) {
-    if (hasHttpRequestInKeyword(kw)) return true;
-    if (kw?.keywords && hasHttpRequestInChildren(kw.keywords)) return true;
-  }
-  return false;
 }
 
 function isFailureBubblingBoundaryKeyword(keyword) {

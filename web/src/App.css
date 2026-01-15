@@ -1044,6 +1044,8 @@ input[type="checkbox"] {
   transition: all 0.2s;
   padding: 8px 12px;
   margin-bottom: 12px;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .keyword-item:hover {
@@ -1057,6 +1059,7 @@ input[type="checkbox"] {
   align-items: center;
   margin-bottom: 12px;
   user-select: none;
+  flex-wrap: wrap;
 }
 
 .keyword-header.clickable {
@@ -1105,6 +1108,9 @@ input[type="checkbox"] {
   font-weight: 500;
   flex: 1;
   font-size: 0.95em;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .api-pill {
