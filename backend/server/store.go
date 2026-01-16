@@ -1,10 +1,13 @@
 package backend
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -55,14 +58,16 @@ func (s *RunStore) Dir() string             { return s.dir }
 func (s *RunStore) Interval() time.Duration { return s.interval }
 
 func (s *RunStore) Start() {
+	go s.scanLoop()
+}
+
+func (s *RunStore) scanLoop() {
 	s.scanOnce()
-	go func() {
-		t := time.NewTicker(s.interval)
-		defer t.Stop()
-		for range t.C {
-			s.scanOnce()
-		}
-	}()
+	t := time.NewTicker(s.interval)
+	defer t.Stop()
+	for range t.C {
+		s.scanOnce()
+	}
 }
 
 func (s *RunStore) ListRuns() []RunInfo {
@@ -87,8 +92,15 @@ func (s *RunStore) GetRuns(ids []string) (columns []string, inputFiles []string,
 
 	for _, id := range ids {
 		e, ok := s.runs[id]
-		if !ok || e.robot == nil {
+		if !ok {
 			return nil, nil, nil, fmt.Errorf("%w: %s", errRunNotFound, id)
+		}
+		if e.robot == nil {
+			robot, err := robotdiff.ParseRobotXMLFile(e.abs)
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("parse run %s: %w", e.abs, err)
+			}
+			e.robot = robot
 		}
 		columns = append(columns, e.info.Name)
 		inputFiles = append(inputFiles, e.abs)
@@ -179,20 +191,20 @@ func (s *RunStore) scanOnce() {
 				}
 			}
 
-			robot, err := robotdiff.ParseRobotXMLFile(abs)
+			pass, fail, total, okStats, err := readRobotStatistics(abs)
 			if err != nil {
 				continue
 			}
-			pass, fail, total := robotdiff.CountTests(&robot.Suite)
-			if robot.Statistics != nil {
-				if p, f, sk, ok := robot.Statistics.Total.AllTests(); ok {
-					pass, fail, total = p, f, p+f+sk
+			if !okStats {
+				robot, err := robotdiff.ParseRobotXMLFile(abs)
+				if err != nil {
+					continue
 				}
+				pass, fail, total = robotdiff.CountTests(&robot.Suite)
 			}
 
 			updated[id] = &runEntry{
-				abs:   abs,
-				robot: robot,
+				abs: abs,
 				info: RunInfo{
 					ID:        id,
 					Name:      runName,
@@ -219,17 +231,123 @@ func stableID(s string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func (s *RunStore) GetTestDetails(runID, testName string) (*robotdiff.Test, error) {
-	s.mu.RLock()
-	entry, ok := s.runs[runID]
-	s.mu.RUnlock()
+type robotStat struct {
+	Pass int    `xml:"pass,attr"`
+	Fail int    `xml:"fail,attr"`
+	Skip int    `xml:"skip,attr"`
+	Name string `xml:",chardata"`
+}
 
-	if !ok {
-		return nil, errRunNotFound
+func readRobotStatistics(path string) (pass, fail, total int, ok bool, err error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, 0, 0, false, err
 	}
 
+	// Fast path: read only the tail where <statistics> usually lives.
+	if info.Size() > 0 {
+		const maxTailBytes = 4 * 1024 * 1024
+		readSize := int64(maxTailBytes)
+		if info.Size() < readSize {
+			readSize = info.Size()
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			return 0, 0, 0, false, err
+		}
+		buf := make([]byte, readSize)
+		_, _ = f.ReadAt(buf, info.Size()-readSize)
+		_ = f.Close()
+
+		if idx := bytes.LastIndex(buf, []byte("<statistics")); idx != -1 {
+			pass, fail, total, ok, err = scanStatisticsBytes(buf[idx:])
+			if err == nil && ok {
+				return pass, fail, total, ok, nil
+			}
+		}
+	}
+
+	// Fallback: stream entire file if tail scan couldn't find statistics.
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, 0, 0, false, err
+	}
+	defer f.Close()
+	return scanStatisticsStream(xml.NewDecoder(f))
+}
+
+func scanStatisticsBytes(b []byte) (pass, fail, total int, ok bool, err error) {
+	return scanStatisticsStream(xml.NewDecoder(bytes.NewReader(b)))
+}
+
+func scanStatisticsStream(dec *xml.Decoder) (pass, fail, total int, ok bool, err error) {
+	insideStats := false
+	var fallback *robotStat
+
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return 0, 0, 0, false, err
+		}
+		switch se := tok.(type) {
+		case xml.StartElement:
+			switch se.Name.Local {
+			case "statistics":
+				insideStats = true
+			case "stat":
+				if !insideStats {
+					continue
+				}
+				var st robotStat
+				if err := dec.DecodeElement(&st, &se); err != nil {
+					return 0, 0, 0, false, err
+				}
+				name := strings.TrimSpace(st.Name)
+				if strings.EqualFold(name, "All Tests") {
+					return st.Pass, st.Fail, st.Pass + st.Fail + st.Skip, true, nil
+				}
+				if fallback == nil {
+					fallback = &st
+				}
+			}
+		case xml.EndElement:
+			if insideStats && se.Name.Local == "statistics" {
+				if fallback != nil {
+					return fallback.Pass, fallback.Fail, fallback.Pass + fallback.Fail + fallback.Skip, true, nil
+				}
+				return 0, 0, 0, false, nil
+			}
+		}
+	}
+	if fallback != nil {
+		return fallback.Pass, fallback.Fail, fallback.Pass + fallback.Fail + fallback.Skip, true, nil
+	}
+	return 0, 0, 0, false, nil
+}
+
+func (s *RunStore) GetTestDetails(runID, testName string) (*robotdiff.Test, error) {
+	s.mu.Lock()
+	entry, ok := s.runs[runID]
+	if !ok {
+		s.mu.Unlock()
+		return nil, errRunNotFound
+	}
+	if entry.robot == nil {
+		robot, err := robotdiff.ParseRobotXMLFile(entry.abs)
+		if err != nil {
+			s.mu.Unlock()
+			return nil, err
+		}
+		entry.robot = robot
+	}
+	robot := entry.robot
+	s.mu.Unlock()
+
 	// Search for the test in the cached robot data
-	test := findTestInSuite(&entry.robot.Suite, testName)
+	test := findTestInSuite(&robot.Suite, testName)
 	if test != nil {
 		return test, nil
 	}
