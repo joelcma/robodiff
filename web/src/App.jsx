@@ -294,8 +294,6 @@ function App() {
           runs={filteredRuns}
           selected={selected}
           onToggle={toggle}
-          title={title}
-          onTitleChange={setTitle}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           onSelectAll={selectAll}

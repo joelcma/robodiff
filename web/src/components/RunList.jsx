@@ -20,8 +20,6 @@ export default function RunList({
   runs,
   selected,
   onToggle,
-  title,
-  onTitleChange,
   searchQuery,
   onSearchChange,
   onSelectAll,
@@ -62,26 +60,14 @@ export default function RunList({
     <section className="panel p-1">
       <div className="panel-header">
         <h2>Test Runs</h2>
-        <div className="search-box">
-          <input
-            type="search"
-            placeholder="Search runs... (Ctrl+F)"
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-          />
-        </div>
-      </div>
-
-      {showActions && (
         <div className="controls">
-          <div className="control-group">
-            <label>
-              Title:
-              <input
-                value={title}
-                onChange={(e) => onTitleChange(e.target.value)}
-              />
-            </label>
+          <div className="search-box">
+            <input
+              type="search"
+              placeholder="Search runs... (Ctrl+F)"
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+            />
           </div>
           <div className="action-buttons">
             <button
@@ -133,7 +119,7 @@ export default function RunList({
             </button>
           </div>
         </div>
-      )}
+      </div>
 
       {runs.length === 0 ? (
         <div className="empty-state">
