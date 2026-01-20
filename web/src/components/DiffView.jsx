@@ -57,12 +57,6 @@ export default function DiffView({
     <section className="panel p-1">
       <div className="panel-header">
         <h2>Comparison Results</h2>
-        <button className="close-btn" onClick={onClose} title="Close (Esc)">
-          ✕
-        </button>
-      </div>
-      <div className="diff-meta">
-        <span>{diff.columns?.length || 0} runs compared</span>
         <div className="filter-buttons">
           <button
             className={diffFilter === "all" ? "active" : ""}
@@ -83,6 +77,9 @@ export default function DiffView({
             Failures Only
           </button>
         </div>
+        <button className="close-btn" onClick={onClose} title="Close (Esc)">
+          ✕
+        </button>
       </div>
 
       {filteredDiffSuites.map((suite) => {

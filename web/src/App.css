@@ -337,7 +337,7 @@
 }
 
 .diff-meta {
-  padding: 0px 0px !important;
+  padding: 0px 0px;
   background: #1a1d29;
   z-index: 9;
   margin: 0 !important;
@@ -1717,4 +1717,12 @@ html[data-theme="light"] .test-row.fail {
 html[data-theme="light"] .test-row.selected {
   background: rgba(79, 70, 229, 0.12);
   outline-color: rgba(79, 70, 229, 0.65);
+}
+
+.rounded {
+  border-radius: 8px;
+}
+
+.mb-1 {
+  margin-bottom: 1em;
 }
