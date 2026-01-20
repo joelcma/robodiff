@@ -412,48 +412,66 @@ func (s *RunStore) DeleteRuns(ids []string) (deleted int, err error) {
 		rootReal = r
 	}
 
-	// Copy the run directories while holding the lock; delete outside the lock.
-	runDirs := make([]string, 0, len(ids))
+	// Copy the run files while holding the lock; delete outside the lock.
+	runFiles := make([]string, 0, len(ids))
 	s.mu.RLock()
 	for _, id := range ids {
 		e := s.runs[id]
 		if e == nil {
 			continue
 		}
-		runDirs = append(runDirs, filepath.Dir(e.abs))
+		runFiles = append(runFiles, e.abs)
 	}
 	s.mu.RUnlock()
 
-	for _, dir := range runDirs {
-		abs, err := filepath.Abs(dir)
+	for _, file := range runFiles {
+		fileAbs, err := filepath.Abs(file)
 		if err != nil {
-			return deleted, fmt.Errorf("resolve run dir: %w", err)
+			return deleted, fmt.Errorf("resolve run file: %w", err)
 		}
-		real := abs
-		if r, err := filepath.EvalSymlinks(abs); err == nil {
-			real = r
+		fileReal := fileAbs
+		if r, err := filepath.EvalSymlinks(fileAbs); err == nil {
+			fileReal = r
 		}
 
-		if !isSubpath(rootReal, real) {
-			return deleted, fmt.Errorf("refusing to delete outside runs root: %s", real)
-		}
-		if samePath(rootReal, real) {
-			return deleted, fmt.Errorf("refusing to delete runs root: %s", real)
+		dirAbs := filepath.Dir(fileAbs)
+		dirReal := filepath.Dir(fileReal)
+
+		if !isSubpath(rootReal, dirReal) {
+			return deleted, fmt.Errorf("refusing to delete outside runs root: %s", dirReal)
 		}
 
-		st, err := os.Stat(real)
+		if samePath(rootReal, dirReal) {
+			// File is in root: delete only the XML file.
+			if !isSubpath(rootReal, fileReal) {
+				return deleted, fmt.Errorf("refusing to delete outside runs root: %s", fileReal)
+			}
+			if err := os.Remove(fileReal); err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					continue
+				}
+				return deleted, fmt.Errorf("delete run file: %w", err)
+			}
+			deleted++
+			continue
+		}
+
+		if samePath(rootReal, dirReal) {
+			return deleted, fmt.Errorf("refusing to delete runs root: %s", dirReal)
+		}
+
+		st, err := os.Stat(dirReal)
 		if err != nil {
-			// Already gone; treat as no-op.
 			if errors.Is(err, os.ErrNotExist) {
 				continue
 			}
 			return deleted, fmt.Errorf("stat run dir: %w", err)
 		}
 		if !st.IsDir() {
-			return deleted, fmt.Errorf("refusing to delete non-directory: %s", real)
+			return deleted, fmt.Errorf("refusing to delete non-directory: %s", dirReal)
 		}
 
-		if err := os.RemoveAll(real); err != nil {
+		if err := os.RemoveAll(dirReal); err != nil {
 			return deleted, fmt.Errorf("delete run dir: %w", err)
 		}
 		deleted++

@@ -424,6 +424,25 @@ button.primary {
   background: #8b5cf6;
 }
 
+html[data-theme="light"] button.primary {
+  background: #4f46e5;
+  color: #ffffff;
+}
+
+html[data-theme="light"] button.secondary {
+  background: #ffffff;
+  color: #111111;
+  border: 1px solid rgba(17, 17, 17, 0.2);
+  box-shadow: none;
+}
+
+html[data-theme="light"] button.secondary:hover:not(:disabled) {
+  background: rgba(79, 70, 229, 0.12);
+  border-color: rgba(79, 70, 229, 0.35);
+  color: #111111;
+  box-shadow: none;
+}
+
 .runs,
 .diff {
   width: 100%;
@@ -598,6 +617,10 @@ html[data-theme="light"] .filter-buttons button.active {
   border-color: rgba(79, 70, 229, 0.5);
   box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.25);
   color: #111111;
+}
+
+.p-1 {
+  padding: 1em;
 }
 
 /* Collapsible suites */

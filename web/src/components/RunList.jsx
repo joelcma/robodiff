@@ -59,7 +59,7 @@ export default function RunList({
   }
 
   return (
-    <section className="panel">
+    <section className="panel p-1">
       <div className="panel-header">
         <h2>Test Runs</h2>
         <div className="search-box">
