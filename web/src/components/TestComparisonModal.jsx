@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import KeywordItem from "./KeywordItem";
 import { formatTime } from "../utils/timeFormatter";
 
@@ -88,7 +89,7 @@ export default function TestComparisonModal({
 
   if (!testName) return null;
 
-  return (
+  return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <div
         className="modal-content test-comparison-modal"
@@ -159,6 +160,7 @@ export default function TestComparisonModal({
           })}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
