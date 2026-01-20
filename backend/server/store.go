@@ -523,7 +523,7 @@ func samePath(a, b string) bool {
 func findTestInSuite(suite *robotdiff.Suite, testName string) *robotdiff.Test {
 	// Check tests in current suite
 	for i := range suite.Tests {
-		if suite.Tests[i].Name == testName {
+		if strings.EqualFold(suite.Tests[i].Name, testName) {
 			return &suite.Tests[i]
 		}
 	}
@@ -546,7 +546,7 @@ func findTestInSuiteByFullName(suite *robotdiff.Suite, fullName, prefix string) 
 
 	for i := range suite.Tests {
 		full := current + "." + suite.Tests[i].Name
-		if full == fullName {
+		if strings.EqualFold(full, fullName) {
 			return &suite.Tests[i]
 		}
 	}
