@@ -91,6 +91,10 @@ export default function RunList({
             >
               ✕ Clear
             </button>
+          </div>
+        </div>
+        <div className="controls">
+          <div className="action-buttons">
             <button
               className="secondary"
               onClick={confirmDelete}
