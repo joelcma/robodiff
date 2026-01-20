@@ -1559,6 +1559,75 @@ html[data-theme="light"] .status-badge.fail {
   border: 1px solid #fca5a5;
 }
 
+html[data-theme="light"] .toggle-list-btn,
+html[data-theme="light"] .theme-toggle-btn {
+  background: #ffffff;
+  border-color: rgba(17, 17, 17, 0.2);
+  color: #111111;
+}
+
+html[data-theme="light"] .toggle-list-btn:hover:not(:disabled),
+html[data-theme="light"] .theme-toggle-btn:hover:not(:disabled) {
+  background: rgba(79, 70, 229, 0.12);
+  border-color: rgba(79, 70, 229, 0.35);
+  color: #111111;
+}
+
+html[data-theme="light"] .keyword-time {
+  color: rgba(17, 17, 17, 0.7);
+}
+
+html[data-theme="light"] .argument-item {
+  background: rgba(79, 70, 229, 0.1);
+  color: #111111;
+}
+
+html[data-theme="light"] .argument-json-block {
+  color: #111111;
+}
+
+html[data-theme="light"] .api-pill {
+  background: rgba(79, 70, 229, 0.12);
+  border-color: rgba(79, 70, 229, 0.35);
+  color: #111111;
+}
+
+html[data-theme="light"] .json-copy-btn {
+  background: rgba(79, 70, 229, 0.12);
+  border-color: rgba(79, 70, 229, 0.35);
+  color: #111111;
+}
+
+html[data-theme="light"] .json-copy-btn:hover {
+  background: rgba(79, 70, 229, 0.2);
+  border-color: rgba(79, 70, 229, 0.5);
+  color: #111111;
+}
+
+html[data-theme="light"] .argument-json {
+  background: #f8fafc;
+  border-color: rgba(17, 17, 17, 0.15);
+  color: #111111;
+}
+
+html[data-theme="light"] .keyword-item {
+  background: #f3f4f6;
+  border-color: rgba(17, 17, 17, 0.12);
+}
+
+html[data-theme="light"] .keyword-item:hover {
+  background: #ffffff;
+  border-color: rgba(17, 17, 17, 0.2);
+}
+
+html[data-theme="light"] .keyword-header.clickable:hover {
+  opacity: 1;
+}
+
+html[data-theme="light"] .message-timestamp {
+  color: rgba(17, 17, 17, 0.6);
+}
+
 html[data-theme="light"] .keyword-status {
   color: #111111;
 }
