@@ -35,8 +35,17 @@ function App() {
   const [collapsedSuites, setCollapsedSuites] = useState(() => new Set());
   const [showHelp, setShowHelp] = useState(false);
   const [showRunList, setShowRunList] = useState(true);
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem("robotdiff-theme") || "dark";
+  });
 
   const selectedIds = useMemo(() => Array.from(selected), [selected]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    document.documentElement.style.colorScheme = theme;
+    localStorage.setItem("robotdiff-theme", theme);
+  }, [theme]);
 
   // Filtered and sorted runs
   const filteredRuns = useMemo(() => {
@@ -272,6 +281,10 @@ function App() {
         onShowHelp={() => setShowHelp(true)}
         showRunList={showRunList}
         onToggleRunList={() => setShowRunList(!showRunList)}
+        theme={theme}
+        onToggleTheme={() =>
+          setTheme((prev) => (prev === "dark" ? "light" : "dark"))
+        }
       />
 
       {error ? <div className="error">⚠️ {error}</div> : null}

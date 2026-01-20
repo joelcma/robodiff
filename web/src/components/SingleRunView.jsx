@@ -118,12 +118,15 @@ export default function SingleRunView({
               ✕
             </button>
           </div>
-          <span className="path-code">{singleRun.file}</span>
         </div>
 
         {singleRun.suites?.map((suite) => {
           const isCollapsed = collapsedSuites.has(suite.name);
-          const normalizedQuery = searchQuery.trim().toLowerCase();
+          const searchTerms = searchQuery
+            .trim()
+            .toLowerCase()
+            .split(/\s+/)
+            .filter(Boolean);
           const filteredTests = suite.tests
             .filter((test) => {
               if (diffFilter === "all") return true;
@@ -134,8 +137,9 @@ export default function SingleRunView({
               return true;
             })
             .filter((test) => {
-              if (!normalizedQuery) return true;
-              return test.name.toLowerCase().includes(normalizedQuery);
+              if (searchTerms.length === 0) return true;
+              const name = test.name.toLowerCase();
+              return searchTerms.every((term) => name.includes(term));
             });
 
           if (filteredTests.length === 0) return null;

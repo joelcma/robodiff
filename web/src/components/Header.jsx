@@ -7,6 +7,8 @@ export default function Header({
   onShowHelp,
   showRunList,
   onToggleRunList,
+  theme,
+  onToggleTheme,
 }) {
   return (
     <header className="header">
@@ -32,6 +34,13 @@ export default function Header({
             <strong>{selectedCount}</strong>
           </div>
           <div className="header-actions">
+            <button
+              className="theme-toggle-btn"
+              onClick={onToggleTheme}
+              title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+            >
+              {theme === "dark" ? "☀️" : "🌙"}
+            </button>
             <button
               className="toggle-list-btn"
               onClick={onToggleRunList}
