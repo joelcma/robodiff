@@ -154,10 +154,7 @@ func (s *RunStore) scanOnce() {
 				continue
 			}
 
-			// Heuristic: prefer Robot's canonical output file.
-			// This avoids trying to parse every XML file (xunit.xml, junit.xml, etc.)
-			// which is common in result folders.
-			if lower != "output.xml" {
+			if !isRobotXMLFile(absPath) {
 				continue
 			}
 
@@ -178,9 +175,12 @@ func (s *RunStore) scanOnce() {
 
 			id := stableID(abs)
 
-			// Use directory name for output.xml so multiple runs don't all show as "output".
-			runName := filepath.Base(filepath.Dir(abs))
-			if runName == "" || runName == string(filepath.Separator) {
+			runName := ""
+			if lower == "output.xml" {
+				// Use directory name for output.xml so multiple runs don't all show as "output".
+				runName = filepath.Base(filepath.Dir(abs))
+			}
+			if runName == "" || runName == string(filepath.Separator) || lower != "output.xml" {
 				runName = strings.TrimSuffix(name, filepath.Ext(name))
 			}
 
@@ -232,6 +232,32 @@ func (s *RunStore) scanOnce() {
 func stableID(s string) string {
 	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])
+}
+
+func isRobotXMLFile(path string) bool {
+	const maxProbeBytes = 64 * 1024
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	buf := make([]byte, maxProbeBytes)
+	n, err := f.Read(buf)
+	if n <= 0 || err != nil && err != io.EOF {
+		return false
+	}
+
+	dec := xml.NewDecoder(bytes.NewReader(buf[:n]))
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			return false
+		}
+		if se, ok := tok.(xml.StartElement); ok {
+			return strings.EqualFold(se.Name.Local, "robot")
+		}
+	}
 }
 
 func runFolderSize(dir string) int64 {
