@@ -389,7 +389,13 @@ func (s *RunStore) GetTestDetails(runID, testName string) (*robotdiff.Test, erro
 	s.mu.Unlock()
 
 	// Search for the test in the cached robot data
-	test := findTestInSuite(&robot.Suite, testName)
+	var test *robotdiff.Test
+	if strings.Contains(testName, ".") {
+		test = findTestInSuiteByFullName(&robot.Suite, testName, "")
+	}
+	if test == nil {
+		test = findTestInSuite(&robot.Suite, testName)
+	}
 	if test != nil {
 		return test, nil
 	}
@@ -453,10 +459,6 @@ func (s *RunStore) DeleteRuns(ids []string) (deleted int, err error) {
 			}
 			deleted++
 			continue
-		}
-
-		if samePath(rootReal, dirReal) {
-			return deleted, fmt.Errorf("refusing to delete runs root: %s", dirReal)
 		}
 
 		st, err := os.Stat(dirReal)
@@ -529,6 +531,28 @@ func findTestInSuite(suite *robotdiff.Suite, testName string) *robotdiff.Test {
 	// Recursively check sub-suites
 	for i := range suite.Suites {
 		if test := findTestInSuite(&suite.Suites[i], testName); test != nil {
+			return test
+		}
+	}
+
+	return nil
+}
+
+func findTestInSuiteByFullName(suite *robotdiff.Suite, fullName, prefix string) *robotdiff.Test {
+	current := suite.Name
+	if prefix != "" {
+		current = prefix + "." + suite.Name
+	}
+
+	for i := range suite.Tests {
+		full := current + "." + suite.Tests[i].Name
+		if full == fullName {
+			return &suite.Tests[i]
+		}
+	}
+
+	for i := range suite.Suites {
+		if test := findTestInSuiteByFullName(&suite.Suites[i], fullName, current); test != nil {
 			return test
 		}
 	}
