@@ -434,7 +434,6 @@ func (s *RunStore) DeleteRuns(ids []string) (deleted int, err error) {
 			fileReal = r
 		}
 
-		dirAbs := filepath.Dir(fileAbs)
 		dirReal := filepath.Dir(fileReal)
 
 		if !isSubpath(rootReal, dirReal) {
