@@ -14,6 +14,7 @@ export default function SingleRunView({
   const [loadingTest, setLoadingTest] = useState(null);
   const [activeSuite, setActiveSuite] = useState(null);
   const [activeTestName, setActiveTestName] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const mainContentRef = useRef(null);
   const mainScrollTopRef = useRef(0);
 
@@ -104,6 +105,14 @@ export default function SingleRunView({
                   Failed Only
                 </button>
               </div>
+              <div className="search-box">
+                <input
+                  type="search"
+                  placeholder="Search tests..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
             </div>
             <button className="close-btn" onClick={onClose} title="Close (Esc)">
               ✕
@@ -114,6 +123,7 @@ export default function SingleRunView({
 
         {singleRun.suites?.map((suite) => {
           const isCollapsed = collapsedSuites.has(suite.name);
+          const normalizedQuery = searchQuery.trim().toLowerCase();
           const filteredTests = suite.tests.filter((test) => {
             if (diffFilter === "all") return true;
             if (diffFilter === "pass")
@@ -121,6 +131,9 @@ export default function SingleRunView({
             if (diffFilter === "failures")
               return test.status.toUpperCase() === "FAIL";
             return true;
+          }).filter((test) => {
+            if (!normalizedQuery) return true;
+            return test.name.toLowerCase().includes(normalizedQuery);
           });
 
           if (filteredTests.length === 0) return null;
