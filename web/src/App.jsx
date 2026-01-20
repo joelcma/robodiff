@@ -338,6 +338,7 @@ function App() {
           filteredDiffSuites={filteredDiffSuites}
           collapsedSuites={collapsedSuites}
           onToggleSuite={toggleSuite}
+          runIds={selectedIds}
         />
       )}
 

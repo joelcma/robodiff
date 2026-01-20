@@ -869,6 +869,47 @@ html[data-theme="light"] .filter-buttons button.active {
   animation: slideUp 0.3s ease;
 }
 
+.modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  position: relative;
+  padding-right: 40px;
+}
+
+.modal-header .close-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+.test-comparison-modal {
+  max-width: 1400px;
+  width: min(1400px, 95vw);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px;
+}
+
+.comparison-column {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+html[data-theme="light"] .comparison-column {
+  background: #ffffff;
+  border-color: rgba(17, 17, 17, 0.12);
+}
+
 @keyframes slideUp {
   from {
     transform: translateY(20px);

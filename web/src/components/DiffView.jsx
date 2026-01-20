@@ -1,3 +1,6 @@
+import { useState } from "react";
+import TestComparisonModal from "./TestComparisonModal";
+
 function calculateTestStatus(results) {
   const hasPass = results.includes("PASS");
   const hasFail = results.includes("FAIL");
@@ -46,9 +49,12 @@ export default function DiffView({
   filteredDiffSuites,
   collapsedSuites,
   onToggleSuite,
+  runIds,
 }) {
+  const [comparisonTest, setComparisonTest] = useState(null);
+
   return (
-    <section className="panel">
+    <section className="panel p-1">
       <div className="panel-header">
         <h2>Comparison Results</h2>
         <button className="close-btn" onClick={onClose} title="Close (Esc)">
@@ -80,15 +86,17 @@ export default function DiffView({
       </div>
 
       {filteredDiffSuites.map((suite) => {
+        const displaySuiteName = suite.name.split(".").pop() || suite.name;
         const isCollapsed = collapsedSuites.has(suite.name);
         return (
           <div className="suite" key={suite.name}>
             <h3
               className="suite-header"
               onClick={() => onToggleSuite(suite.name)}
+              title={suite.name}
             >
               <span className="collapse-icon">{isCollapsed ? "▶" : "▼"}</span>
-              {suite.name}
+              {displaySuiteName}
               <span className="suite-count">({suite.tests.length} tests)</span>
             </h3>
             {!isCollapsed && (
@@ -107,14 +115,35 @@ export default function DiffView({
                     {suite.tests.map((t) => {
                       const st = calculateTestStatus(t.results || []);
                       return (
-                        <tr key={t.name} className={`test-row ${st}`}>
+                        <tr
+                          key={t.name}
+                          className={`test-row ${st}`}
+                          onClick={() =>
+                            setComparisonTest({
+                              suiteName: suite.name,
+                              testName: t.name,
+                              fullName: `${suite.name}.${t.name}`,
+                              results: t.results || [],
+                            })
+                          }
+                          style={{ cursor: "pointer" }}
+                          title="Click to compare test details"
+                        >
                           <td className="test-name">{t.name}</td>
                           {(t.results || []).map((v, i) => (
                             <td
                               key={i}
                               className={`result-cell result-${v.toLowerCase()}`}
                             >
-                              <span className="cell-badge">{v}</span>
+                              <span
+                                className={`status ${
+                                  v === "MISSING"
+                                    ? "status-missing"
+                                    : `status-${v.toLowerCase()}`
+                                }`}
+                              >
+                                {v}
+                              </span>
                             </td>
                           ))}
                           <td>
@@ -132,6 +161,18 @@ export default function DiffView({
           </div>
         );
       })}
+
+      {comparisonTest && (
+        <TestComparisonModal
+          suiteName={comparisonTest.suiteName}
+          testName={comparisonTest.testName}
+          fullName={comparisonTest.fullName}
+          results={comparisonTest.results}
+          runIds={runIds || []}
+          runNames={diff.columns || []}
+          onClose={() => setComparisonTest(null)}
+        />
+      )}
     </section>
   );
 }
