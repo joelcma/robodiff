@@ -124,17 +124,19 @@ export default function SingleRunView({
         {singleRun.suites?.map((suite) => {
           const isCollapsed = collapsedSuites.has(suite.name);
           const normalizedQuery = searchQuery.trim().toLowerCase();
-          const filteredTests = suite.tests.filter((test) => {
-            if (diffFilter === "all") return true;
-            if (diffFilter === "pass")
-              return test.status.toUpperCase() === "PASS";
-            if (diffFilter === "failures")
-              return test.status.toUpperCase() === "FAIL";
-            return true;
-          }).filter((test) => {
-            if (!normalizedQuery) return true;
-            return test.name.toLowerCase().includes(normalizedQuery);
-          });
+          const filteredTests = suite.tests
+            .filter((test) => {
+              if (diffFilter === "all") return true;
+              if (diffFilter === "pass")
+                return test.status.toUpperCase() === "PASS";
+              if (diffFilter === "failures")
+                return test.status.toUpperCase() === "FAIL";
+              return true;
+            })
+            .filter((test) => {
+              if (!normalizedQuery) return true;
+              return test.name.toLowerCase().includes(normalizedQuery);
+            });
 
           if (filteredTests.length === 0) return null;
 

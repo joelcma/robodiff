@@ -185,11 +185,14 @@ func (s *RunStore) scanOnce() {
 			}
 
 			if existing, ok := prev[id]; ok && existing != nil {
-				if existing.info.ModTime.Equal(fi.ModTime()) && existing.info.Size == fi.Size() {
+				runSize := runFolderSize(filepath.Dir(abs))
+				if existing.info.ModTime.Equal(fi.ModTime()) && existing.info.Size == runSize {
 					updated[id] = existing
 					continue
 				}
 			}
+
+			runSize := runFolderSize(filepath.Dir(abs))
 
 			pass, fail, total, okStats, err := readRobotStatistics(abs)
 			if err != nil {
@@ -210,7 +213,7 @@ func (s *RunStore) scanOnce() {
 					Name:      runName,
 					RelPath:   filepath.ToSlash(rel),
 					ModTime:   fi.ModTime(),
-					Size:      fi.Size(),
+					Size:      runSize,
 					TestCount: total,
 					PassCount: pass,
 					FailCount: fail,
@@ -229,6 +232,19 @@ func (s *RunStore) scanOnce() {
 func stableID(s string) string {
 	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])
+}
+
+func runFolderSize(dir string) int64 {
+	files := []string{"output.xml", "log.html", "report.html"}
+	var total int64
+	for _, name := range files {
+		st, err := os.Stat(filepath.Join(dir, name))
+		if err != nil || st.IsDir() {
+			continue
+		}
+		total += st.Size()
+	}
+	return total
 }
 
 type robotStat struct {

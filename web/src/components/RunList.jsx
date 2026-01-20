@@ -4,6 +4,18 @@ function formatTime(isoOrDate) {
   return d.toLocaleString();
 }
 
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const idx = Math.min(
+    Math.floor(Math.log(bytes) / Math.log(1024)),
+    units.length - 1
+  );
+  const value = bytes / Math.pow(1024, idx);
+  const precision = value >= 100 ? 0 : value >= 10 ? 1 : 2;
+  return `${value.toFixed(precision)} ${units[idx]}`;
+}
+
 export default function RunList({
   runs,
   selected,
@@ -25,6 +37,7 @@ export default function RunList({
   showActions,
 }) {
   const selectedIds = Array.from(selected);
+  const totalSize = runs.reduce((sum, run) => sum + (run.size || 0), 0);
 
   function confirmDelete() {
     if (!onDeleteSelected) return;
@@ -214,6 +227,24 @@ export default function RunList({
                   )}
                 </th>
                 <th>Pass Rate</th>
+                <th
+                  className={`sortable ${
+                    sortBy === "size" ? "sort-active" : ""
+                  }`}
+                  onClick={() => onSort("size")}
+                  style={{ width: "140px" }}
+                  title={`Total size: ${formatBytes(totalSize)}`}
+                >
+                  Size
+                  {sortBy === "size" && (
+                    <span className="sort-arrow">
+                      {sortDir === "asc" ? "↑" : "↓"}
+                    </span>
+                  )}
+                  <span style={{ marginLeft: "8px", opacity: 0.7 }}>
+                    ({formatBytes(totalSize)})
+                  </span>
+                </th>
                 <th>Path</th>
               </tr>
             </thead>
@@ -257,6 +288,7 @@ export default function RunList({
                         {passRate}%
                       </span>
                     </td>
+                    <td className="num-cell">{formatBytes(run.size || 0)}</td>
                     <td>
                       <code className="path-code">{run.relPath}</code>
                     </td>
