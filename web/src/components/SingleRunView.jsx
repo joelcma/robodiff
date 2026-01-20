@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import Sidebar from "./Sidebar";
 import TestDetailsPanel from "./TestDetailsPanel";
 
@@ -13,10 +13,23 @@ export default function SingleRunView({
   const [testDetails, setTestDetails] = useState(null);
   const [loadingTest, setLoadingTest] = useState(null);
   const [activeSuite, setActiveSuite] = useState(null);
+  const [activeTestName, setActiveTestName] = useState(null);
+  const mainContentRef = useRef(null);
+  const mainScrollTopRef = useRef(0);
+
+  useLayoutEffect(() => {
+    if (!mainContentRef.current || !activeTestName) return;
+    const target = mainContentRef.current.querySelector(
+      `[data-test-row="${CSS.escape(activeTestName)}"]`
+    );
+    if (!target) return;
+    target.scrollIntoView({ block: "center", inline: "nearest" });
+  }, [testDetails, activeTestName]);
 
   const handleTestClick = async (testName, suiteName) => {
     setLoadingTest(testName);
     setActiveSuite(suiteName);
+    setActiveTestName(testName);
 
     const payload = {
       runId: singleRun.runId,
@@ -38,6 +51,9 @@ export default function SingleRunView({
       }
 
       const data = await res.json();
+      if (mainContentRef.current) {
+        mainScrollTopRef.current = mainContentRef.current.scrollTop;
+      }
       setTestDetails(data);
     } catch (err) {
       console.error("Failed to load test details:", err);
@@ -55,7 +71,15 @@ export default function SingleRunView({
     >
       <Sidebar suites={singleRun.suites} activeSuite={activeSuite} />
 
-      <div className="main-content">
+      <div
+        className="main-content"
+        ref={mainContentRef}
+        onScroll={() => {
+          if (mainContentRef.current) {
+            mainScrollTopRef.current = mainContentRef.current.scrollTop;
+          }
+        }}
+      >
         <div className="panel-header-outer">
           <div class="panel-header">
             <h2>{singleRun.title}</h2>
@@ -128,7 +152,8 @@ export default function SingleRunView({
                           key={idx}
                           className={`test-row ${test.status.toLowerCase()} ${
                             loadingTest === test.name ? "loading" : ""
-                          }`}
+                          } ${activeTestName === test.name ? "selected" : ""}`}
+                          data-test-row={test.name}
                           onClick={() => handleTestClick(test.name, suite.name)}
                           style={{ cursor: "pointer" }}
                           title="Click to view test details"
@@ -160,6 +185,9 @@ export default function SingleRunView({
       <TestDetailsPanel
         testDetails={testDetails}
         onClose={() => {
+          if (mainContentRef.current) {
+            mainScrollTopRef.current = mainContentRef.current.scrollTop;
+          }
           setTestDetails(null);
           setActiveSuite(null);
         }}
