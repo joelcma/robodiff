@@ -5,7 +5,7 @@
   line-height: 1.6;
   font-weight: 400;
 
-  color-scheme: light dark;
+  color-scheme: dark;
   color: #e8eaed;
   background: #1a1d29;
 
@@ -110,15 +110,3 @@ code {
   color: #c4b5fd;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
-}
