@@ -42,6 +42,8 @@ type runEntry struct {
 	info  RunInfo
 	abs   string
 	robot *robotdiff.Robot
+	robotModTime time.Time
+	robotSize    int64
 }
 
 type RunStore struct {
@@ -109,12 +111,8 @@ func (s *RunStore) GetRuns(ids []string) (columns []string, inputFiles []string,
 		if !ok {
 			return nil, nil, nil, fmt.Errorf("%w: %s", errRunNotFound, id)
 		}
-		if e.robot == nil {
-			robot, err := robotdiff.ParseRobotXMLFile(e.abs)
-			if err != nil {
-				return nil, nil, nil, fmt.Errorf("parse run %s: %w", e.abs, err)
-			}
-			e.robot = robot
+		if err := s.ensureRobotLoadedLocked(e); err != nil {
+			return nil, nil, nil, err
 		}
 		columns = append(columns, e.info.Name)
 		inputFiles = append(inputFiles, e.abs)
@@ -378,13 +376,9 @@ func (s *RunStore) GetTestDetails(runID, testName string) (*robotdiff.Test, erro
 		s.mu.Unlock()
 		return nil, errRunNotFound
 	}
-	if entry.robot == nil {
-		robot, err := robotdiff.ParseRobotXMLFile(entry.abs)
-		if err != nil {
-			s.mu.Unlock()
-			return nil, err
-		}
-		entry.robot = robot
+	if err := s.ensureRobotLoadedLocked(entry); err != nil {
+		s.mu.Unlock()
+		return nil, err
 	}
 	robot := entry.robot
 	s.mu.Unlock()
@@ -402,6 +396,26 @@ func (s *RunStore) GetTestDetails(runID, testName string) (*robotdiff.Test, erro
 	}
 
 	return nil, fmt.Errorf("test %q not found in run", testName)
+}
+
+func (s *RunStore) ensureRobotLoadedLocked(entry *runEntry) error {
+	fi, err := os.Stat(entry.abs)
+	if err != nil {
+		return fmt.Errorf("stat run %s: %w", entry.abs, err)
+	}
+
+	if entry.robot != nil && entry.robotModTime.Equal(fi.ModTime()) && entry.robotSize == fi.Size() {
+		return nil
+	}
+
+	robot, err := robotdiff.ParseRobotXMLFile(entry.abs)
+	if err != nil {
+		return fmt.Errorf("parse run %s: %w", entry.abs, err)
+	}
+	entry.robot = robot
+	entry.robotModTime = fi.ModTime()
+	entry.robotSize = fi.Size()
+	return nil
 }
 
 func (s *RunStore) DeleteRuns(ids []string) (deleted int, err error) {
