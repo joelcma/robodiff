@@ -1,16 +1,22 @@
 # Robodiff — Go + React
 
-Modern web application for viewing and comparing Robot Framework test results. Built with a Go backend and React frontend, it watches a directory for Robot Framework output XML files and provides real-time interactive analysis.
+Modern web application for viewing and comparing Robot Framework test results. Built with a Go backend and React frontend, it watches a directory for Robot Framework XML files and provides real-time interactive analysis.
+
+## Disclaimer
+
+I've heavily utilized AI coding agents for this project and I have not been overly concerned with perfect code quality or architecture. The focus has been on shipping a functional tool quickly. Please excuse any rough edges in the implementation.
 
 ## Highlights
 
-- **Real-time monitoring**: Continuously scans a directory for new Robot Framework output.xml files
+- **Real-time monitoring**: Continuously scans a directory (and subdirectories) for Robot Framework XML files
 - **Interactive UI**: React-based web interface with keyboard shortcuts for power users
 - **Single run viewer**: Inspect individual test runs with detailed keyword/step information
 - **Diff comparison**: Compare multiple runs side-by-side to spot regressions
 - **Test details**: Click any test to see execution steps, arguments, messages, and timing
+- **API helpers**: Copy curl commands and re-send HTTP requests from API keywords
+- **Run cleanup**: Delete selected runs directly from the UI
 - **Smart navigation**: Sidebar with suite overview, sticky headers, collapsible sections
-- **Zero dependencies**: Single Go binary with embedded React UI
+- **Go stdlib backend**: No external Go dependencies; UI is served from `web/dist`
 
 ## Quick start
 
@@ -40,7 +46,7 @@ Start the server:
 ./robotdiff --addr :3000 /path/to/results
 ```
 
-Then open http://localhost:8080 in your browser.
+Then open http://localhost:8080 in your browser (or whatever address you set).
 
 ## Usage / Flags
 
@@ -71,11 +77,12 @@ Examples:
 
 ### Run Management
 
-- **Auto-discovery**: Scans directory and first-level subdirectories for `*.xml` files
+- **Auto-discovery**: Scans the directory (up to depth 3, including symlinked dirs) for Robot XML files
 - **Search & filter**: Find runs by name or path
 - **Sort**: By modification time, size, or test counts
 - **Multi-select**: Select specific runs to compare
 - **Quick actions**: Select all, select failed, clear selection
+- **Delete runs**: Remove selected runs from disk
 
 ### Single Run View
 
@@ -116,13 +123,15 @@ Examples:
 
 - **HTTP server**: REST API for run data and test details
 - **Folder scanner**: Watches directory every 2 seconds for changes
-- **XML parser**: Parses Robot Framework output.xml on demand
+- **XML parser**: Parses Robot Framework XML on demand
 - **Endpoints**:
   - `GET /api/health` — Health check
   - `GET /api/config` — Server configuration
   - `GET /api/runs` — List available runs
+  - `POST /api/delete-runs` — Delete runs by ID
   - `POST /api/run` — Get single run details
   - `POST /api/test-details` — Get test execution details
+  - `POST /api/http-try` — Execute an HTTP request captured from logs
   - `POST /api/diff` — Compare multiple runs
 
 ### Frontend (React)
@@ -156,7 +165,11 @@ npm install
 npm run dev
 ```
 
-The Vite dev server proxies `/api` requests to `localhost:8080`, so run the Go backend separately.
+The Vite dev server proxies `/api` requests to `localhost:8080` (see [web/vite.config.js](web/vite.config.js)), so run the Go backend separately:
+
+```bash
+./robotdiff --addr :8080 /path/to/test/data
+```
 
 ### Production build
 
@@ -167,7 +180,7 @@ cd ..
 go build -o robotdiff
 ```
 
-The Go binary serves the built React app from `web/dist/`.
+The Go binary serves the built React app from `web/dist/`. If `web/dist/index.html` is missing, the server returns a helpful message with build instructions.
 
 ## Project structure
 
