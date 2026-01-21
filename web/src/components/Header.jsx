@@ -14,7 +14,7 @@ export default function Header({
     <header className="header">
       <div className="title-row">
         <div className="title-group">
-          <h1>Robot Diff</h1>
+          <h1>Robodiff</h1>
           <button
             className="help-btn"
             onClick={onShowHelp}

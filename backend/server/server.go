@@ -574,7 +574,7 @@ func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Title == "" {
-		req.Title = "Robot Diff"
+		req.Title = "Robodiff"
 	}
 
 	columns, inputFiles, robots, err := s.store.GetRuns(req.RunIDs)

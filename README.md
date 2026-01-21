@@ -1,4 +1,4 @@
-# Robot Diff — Go + React
+# Robodiff — Go + React
 
 Modern web application for viewing and comparing Robot Framework test results. Built with a Go backend and React frontend, it watches a directory for Robot Framework output XML files and provides real-time interactive analysis.
 

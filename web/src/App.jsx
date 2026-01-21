@@ -21,7 +21,7 @@ function App() {
   const [runs, setRuns] = useState([]);
   const [dir, setDir] = useState("");
   const [selected, setSelected] = useState(() => new Set());
-  const [title, setTitle] = useState("Robot Diff");
+  const [title, setTitle] = useState("Robodiff");
   const [diff, setDiff] = useState(null);
   const [singleRun, setSingleRun] = useState(null);
   const [loadingRuns, setLoadingRuns] = useState(false);
