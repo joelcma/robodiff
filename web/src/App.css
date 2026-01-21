@@ -690,6 +690,13 @@ html[data-theme="light"] .filter-buttons button.active {
   font-weight: 500;
 }
 
+.error-detail {
+  margin-top: 8px;
+  font-size: 0.85em;
+  color: rgba(255, 255, 255, 0.65);
+  word-break: break-word;
+}
+
 .status {
   display: inline-block;
   padding: 4px 12px;
@@ -970,6 +977,14 @@ kbd {
   text-align: center;
   padding: 48px 24px;
   color: rgba(255, 255, 255, 0.5);
+}
+
+.empty-state-detail {
+  margin-top: 10px;
+  font-size: 0.9em;
+  color: rgba(255, 255, 255, 0.6);
+  display: grid;
+  gap: 4px;
 }
 
 .empty-state p {

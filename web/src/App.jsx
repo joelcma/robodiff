@@ -21,13 +21,13 @@ function App() {
   const [runs, setRuns] = useState([]);
   const [dir, setDir] = useState("");
   const [selected, setSelected] = useState(() => new Set());
-  const [title, setTitle] = useState("Robodiff");
+  const [title] = useState("Robodiff");
   const [diff, setDiff] = useState(null);
   const [singleRun, setSingleRun] = useState(null);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [loadingDiff, setLoadingDiff] = useState(false);
   const [deletingRuns, setDeletingRuns] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("modTime");
   const [sortDir, setSortDir] = useState("desc");
@@ -95,15 +95,26 @@ function App() {
 
   async function refreshRuns() {
     setLoadingRuns(true);
-    setError("");
+    setError(null);
     try {
       const res = await fetch("/api/runs");
-      if (!res.ok) throw new Error(`Failed to load runs (${res.status})`);
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError({
+          code: data?.code || "RUNS_LOAD_FAILED",
+          message: data?.error || `Failed to load runs (${res.status})`,
+          detail: data?.detail || "",
+        });
+        return;
+      }
       setRuns(Array.isArray(data.runs) ? data.runs : []);
       setDir(data.dir || "");
     } catch (e) {
-      setError(e?.message || String(e));
+      setError({
+        code: "RUNS_LOAD_FAILED",
+        message: e?.message || String(e),
+        detail: "",
+      });
     } finally {
       setLoadingRuns(false);
     }
@@ -112,7 +123,7 @@ function App() {
   async function generateDiff() {
     if (selectedIds.length < 1) return;
     setLoadingDiff(true);
-    setError("");
+    setError(null);
     setDiff(null);
     setSingleRun(null);
 
@@ -124,13 +135,23 @@ function App() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ runId: selectedIds[0] }),
         });
-        const data = await res.json();
-        if (!res.ok)
-          throw new Error(data?.error || `View run failed (${res.status})`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setError({
+            code: data?.code || "VIEW_FAILED",
+            message: data?.error || `View run failed (${res.status})`,
+            detail: data?.detail || "",
+          });
+          return;
+        }
         setSingleRun({ ...data, runId: selectedIds[0] });
         setShowRunList(false);
       } catch (e) {
-        setError(e?.message || String(e));
+        setError({
+          code: "VIEW_FAILED",
+          message: e?.message || String(e),
+          detail: "",
+        });
       } finally {
         setLoadingDiff(false);
       }
@@ -144,13 +165,23 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ runIds: selectedIds, title }),
       });
-      const data = await res.json();
-      if (!res.ok)
-        throw new Error(data?.error || `Diff failed (${res.status})`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError({
+          code: data?.code || "DIFF_FAILED",
+          message: data?.error || `Diff failed (${res.status})`,
+          detail: data?.detail || "",
+        });
+        return;
+      }
       setDiff(data);
       setShowRunList(false);
     } catch (e) {
-      setError(e?.message || String(e));
+      setError({
+        code: "DIFF_FAILED",
+        message: e?.message || String(e),
+        detail: "",
+      });
     } finally {
       setLoadingDiff(false);
     }
@@ -161,7 +192,7 @@ function App() {
     if (runIds.length < 1) return;
 
     setDeletingRuns(true);
-    setError("");
+    setError(null);
     try {
       const res = await fetch("/api/delete-runs", {
         method: "POST",
@@ -169,8 +200,14 @@ function App() {
         body: JSON.stringify({ runIds }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok)
-        throw new Error(data?.error || `Delete failed (${res.status})`);
+      if (!res.ok) {
+        setError({
+          code: data?.code || "DELETE_FAILED",
+          message: data?.error || `Delete failed (${res.status})`,
+          detail: data?.detail || "",
+        });
+        return;
+      }
 
       setSelected((prev) => {
         const next = new Set(prev);
@@ -179,7 +216,11 @@ function App() {
       });
       await refreshRuns();
     } catch (e) {
-      setError(e?.message || String(e));
+      setError({
+        code: "DELETE_FAILED",
+        message: e?.message || String(e),
+        detail: "",
+      });
     } finally {
       setDeletingRuns(false);
     }
@@ -287,11 +328,18 @@ function App() {
         }
       />
 
-      {error ? <div className="error">⚠️ {error}</div> : null}
+      {error ? (
+        <div className="error">
+          ⚠️ {error.message}
+          {error.code ? <span> ({error.code})</span> : null}
+          {error.detail ? <div className="error-detail">{error.detail}</div> : null}
+        </div>
+      ) : null}
 
       {showRunList && (
         <RunList
           runs={filteredRuns}
+          dir={dir}
           selected={selected}
           onToggle={toggle}
           searchQuery={searchQuery}
@@ -303,10 +351,10 @@ function App() {
           onDeleteSelected={deleteSelectedRuns}
           deletingRuns={deletingRuns}
           loadingDiff={loadingDiff}
+          loadingRuns={loadingRuns}
           sortBy={sortBy}
           sortDir={sortDir}
           onSort={sortColumn}
-          showActions={!singleRun && !diff}
         />
       )}
 

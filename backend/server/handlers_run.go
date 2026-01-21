@@ -37,7 +37,8 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 
 	columns, inputFiles, robots, err := s.store.GetRuns(ctx, []string{req.RunID})
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		status, code, msg, detail := classifyError(err)
+		writeErrorWithCode(w, status, code, msg, detail)
 		return
 	}
 
@@ -71,7 +72,8 @@ func (s *Server) handleTestDetails(w http.ResponseWriter, r *http.Request) {
 
 	test, err := s.store.GetTestDetails(ctx, req.RunID, req.TestName)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		status, code, msg, detail := classifyError(err)
+		writeErrorWithCode(w, status, code, msg, detail)
 		return
 	}
 

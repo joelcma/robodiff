@@ -27,7 +27,8 @@ func (s *Server) handleDeleteRuns(w http.ResponseWriter, r *http.Request) {
 
 	deleted, err := s.store.DeleteRuns(req.RunIDs)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		status, code, msg, detail := classifyError(err)
+		writeErrorWithCode(w, status, code, msg, detail)
 		return
 	}
 

@@ -18,6 +18,7 @@ function formatBytes(bytes) {
 
 export default function RunList({
   runs,
+  dir,
   selected,
   onToggle,
   searchQuery,
@@ -29,10 +30,10 @@ export default function RunList({
   onDeleteSelected,
   deletingRuns,
   loadingDiff,
+  loadingRuns,
   sortBy,
   sortDir,
   onSort,
-  showActions,
 }) {
   const selectedIds = Array.from(selected);
   const totalSize = runs.reduce((sum, run) => sum + (run.size || 0), 0);
@@ -127,7 +128,17 @@ export default function RunList({
 
       {runs.length === 0 ? (
         <div className="empty-state">
-          {searchQuery ? "No runs match your search." : "No runs found yet."}
+          {loadingRuns
+            ? "Loading runs…"
+            : searchQuery
+            ? "No runs match your search."
+            : "No runs found yet."}
+          {!loadingRuns && !searchQuery ? (
+            <div className="empty-state-detail">
+              <div>Watching: {dir || "(unknown)"}</div>
+              <div>Tip: point the server at a folder with Robot output.xml files.</div>
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="table-wrapper">

@@ -38,14 +38,16 @@ func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 
 	columns, inputFiles, robots, err := s.store.GetRuns(ctx, req.RunIDs)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		status, code, msg, detail := classifyError(err)
+		writeErrorWithCode(w, status, code, msg, detail)
 		return
 	}
 
 	results := rdiff.NewDiffResults()
 	for i := range robots {
 		if err := ctx.Err(); err != nil {
-			writeError(w, http.StatusRequestTimeout, err.Error())
+			status, code, msg, detail := classifyError(err)
+			writeErrorWithCode(w, status, code, msg, detail)
 			return
 		}
 		results.AddParsedOutput(robots[i], columns[i])
