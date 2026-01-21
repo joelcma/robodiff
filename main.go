@@ -9,6 +9,7 @@ import (
 	"time"
 
 	backend "robot_diff/backend/server"
+	"robot_diff/backend/store"
 )
 
 const usage = `Robotdiff: local server + React UI for Robot Framework outputs
@@ -70,9 +71,9 @@ func main() {
 		config.ScanInterval = 2 * time.Second
 	}
 
-	store := backend.NewRunStore(dir, config.ScanInterval)
-	store.Start()
-	server := backend.NewServer(config.Addr, store)
+	runStore := store.NewRunStore(dir, config.ScanInterval)
+	runStore.Start()
+	server := backend.NewServer(config.Addr, runStore)
 	fmt.Printf("Serving on http://localhost%s (watching %s)\n", normalizeLocalhostAddr(config.Addr), dir)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
