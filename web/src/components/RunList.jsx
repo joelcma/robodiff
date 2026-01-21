@@ -19,14 +19,17 @@ function formatBytes(bytes) {
 export default function RunList({
   runs,
   dir,
+  pinned,
   selected,
   onToggle,
+  onTogglePin,
   searchQuery,
   onSearchChange,
   onSelectAll,
   onSelectFailed,
   onClearSelection,
   onGenerate,
+  onComparePinned,
   onDeleteSelected,
   deletingRuns,
   loadingDiff,
@@ -37,6 +40,7 @@ export default function RunList({
 }) {
   const selectedIds = Array.from(selected);
   const totalSize = runs.reduce((sum, run) => sum + (run.size || 0), 0);
+  const pinnedCount = runs.filter((r) => pinned?.has(r.id)).length;
 
   function confirmDelete() {
     if (!onDeleteSelected) return;
@@ -107,6 +111,16 @@ export default function RunList({
                 : `🗑️ Delete (${selectedIds.length})`}
             </button>
             <button
+              className="secondary"
+              onClick={onComparePinned}
+              disabled={pinnedCount < 1 || loadingDiff}
+              title="Compare pinned runs"
+            >
+              {loadingDiff
+                ? "⟳ Loading…"
+                : `📌 Compare (${pinnedCount})`}
+            </button>
+            <button
               className="primary"
               onClick={onGenerate}
               disabled={selectedIds.length < 1 || loadingDiff}
@@ -145,6 +159,9 @@ export default function RunList({
           <table className="runs">
             <thead>
               <tr>
+                <th style={{ width: "36px" }} title="Pinned">
+                  📌
+                </th>
                 <th style={{ width: "40px" }}>
                   <span
                     style={{
@@ -252,6 +269,7 @@ export default function RunList({
             <tbody>
               {runs.map((run) => {
                 const isSelected = selected.has(run.id);
+                const isPinned = pinned?.has(run.id);
                 const passRate =
                   run.testCount > 0
                     ? Math.round((run.passCount / run.testCount) * 100)
@@ -265,6 +283,20 @@ export default function RunList({
                     className={isSelected ? "selected" : ""}
                     onClick={() => onToggle(run.id)}
                   >
+                    <td>
+                      <button
+                        type="button"
+                        className={`pin-btn ${isPinned ? "pinned" : ""}`}
+                        title={isPinned ? "Unpin run" : "Pin run"}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onTogglePin?.(run.id);
+                        }}
+                      >
+                        {isPinned ? "📌" : "📍"}
+                      </button>
+                    </td>
                     <td>
                       <input
                         type="checkbox"

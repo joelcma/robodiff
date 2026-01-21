@@ -35,6 +35,15 @@ function App() {
   const [collapsedSuites, setCollapsedSuites] = useState(() => new Set());
   const [showHelp, setShowHelp] = useState(false);
   const [showRunList, setShowRunList] = useState(true);
+  const [pinned, setPinned] = useState(() => {
+    try {
+      const raw = localStorage.getItem("robotdiff-pins");
+      const parsed = raw ? JSON.parse(raw) : [];
+      return new Set(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      return new Set();
+    }
+  });
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem("robotdiff-theme") || "dark";
   });
@@ -47,6 +56,13 @@ function App() {
     localStorage.setItem("robotdiff-theme", theme);
   }, [theme]);
 
+  useEffect(() => {
+    localStorage.setItem(
+      "robotdiff-pins",
+      JSON.stringify(Array.from(pinned))
+    );
+  }, [pinned]);
+
   // Filtered and sorted runs
   const filteredRuns = useMemo(() => {
     let filtered = runs.filter((r) =>
@@ -57,6 +73,9 @@ function App() {
     );
 
     filtered.sort((a, b) => {
+      const aPinned = pinned.has(a.id);
+      const bPinned = pinned.has(b.id);
+      if (aPinned !== bPinned) return aPinned ? -1 : 1;
       let aVal = a[sortBy];
       let bVal = b[sortBy];
       if (sortBy === "modTime") {
@@ -72,7 +91,7 @@ function App() {
     });
 
     return filtered;
-  }, [runs, searchQuery, sortBy, sortDir]);
+  }, [runs, searchQuery, sortBy, sortDir, pinned]);
 
   // Filtered diff suites
   const filteredDiffSuites = useMemo(() => {
@@ -120,20 +139,21 @@ function App() {
     }
   }
 
-  async function generateDiff() {
-    if (selectedIds.length < 1) return;
+  async function generateDiff(idsOrEvent) {
+    const ids = Array.isArray(idsOrEvent) ? idsOrEvent : selectedIds;
+    if (!ids || ids.length < 1) return;
     setLoadingDiff(true);
     setError(null);
     setDiff(null);
     setSingleRun(null);
 
     // If only 1 run selected, view that run
-    if (selectedIds.length === 1) {
+    if (ids.length === 1) {
       try {
         const res = await fetch("/api/run", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ runId: selectedIds[0] }),
+          body: JSON.stringify({ runId: ids[0] }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -144,7 +164,7 @@ function App() {
           });
           return;
         }
-        setSingleRun({ ...data, runId: selectedIds[0] });
+        setSingleRun({ ...data, runId: ids[0] });
         setShowRunList(false);
       } catch (e) {
         setError({
@@ -163,7 +183,7 @@ function App() {
       const res = await fetch("/api/diff", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ runIds: selectedIds, title }),
+        body: JSON.stringify({ runIds: ids, title }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -210,6 +230,11 @@ function App() {
       }
 
       setSelected((prev) => {
+        const next = new Set(prev);
+        for (const id of runIds) next.delete(id);
+        return next;
+      });
+      setPinned((prev) => {
         const next = new Set(prev);
         for (const id of runIds) next.delete(id);
         return next;
@@ -279,6 +304,22 @@ function App() {
     });
   }
 
+  function togglePin(id) {
+    setPinned((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function comparePinned() {
+    const ids = filteredRuns.map((r) => r.id).filter((id) => pinned.has(id));
+    if (ids.length < 1) return;
+    setSelected(new Set(ids));
+    generateDiff(ids);
+  }
+
   function selectAll() {
     setSelected(new Set(filteredRuns.map((r) => r.id)));
   }
@@ -340,14 +381,17 @@ function App() {
         <RunList
           runs={filteredRuns}
           dir={dir}
+          pinned={pinned}
           selected={selected}
           onToggle={toggle}
+          onTogglePin={togglePin}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           onSelectAll={selectAll}
           onSelectFailed={selectFailed}
           onClearSelection={clearSelection}
           onGenerate={generateDiff}
+          onComparePinned={comparePinned}
           onDeleteSelected={deleteSelectedRuns}
           deletingRuns={deletingRuns}
           loadingDiff={loadingDiff}
