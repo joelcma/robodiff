@@ -1,8 +1,10 @@
 package backend
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	rdiff "robot_diff/backend/diff"
 )
@@ -31,7 +33,10 @@ func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 		req.Title = "Robodiff"
 	}
 
-	columns, inputFiles, robots, err := s.store.GetRuns(req.RunIDs)
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	columns, inputFiles, robots, err := s.store.GetRuns(ctx, req.RunIDs)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -39,6 +44,10 @@ func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 
 	results := rdiff.NewDiffResults()
 	for i := range robots {
+		if err := ctx.Err(); err != nil {
+			writeError(w, http.StatusRequestTimeout, err.Error())
+			return
+		}
 		results.AddParsedOutput(robots[i], columns[i])
 	}
 

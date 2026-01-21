@@ -1,25 +1,56 @@
 package robotdiff
 
 import (
+	"context"
 	"encoding/xml"
 	"os"
 	"strings"
 )
 
 func ParseRobotXMLBytes(data []byte) (*Robot, error) {
-	var robot Robot
-	if err := xml.Unmarshal(data, &robot); err != nil {
-		return nil, err
-	}
-	return &robot, nil
+	return ParseRobotXMLBytesContext(context.Background(), data)
 }
 
 func ParseRobotXMLFile(path string) (*Robot, error) {
+	return ParseRobotXMLFileContext(context.Background(), path)
+}
+
+func ParseRobotXMLBytesContext(ctx context.Context, data []byte) (*Robot, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	resultCh := make(chan *Robot, 1)
+	errCh := make(chan error, 1)
+
+	go func() {
+		var robot Robot
+		if err := xml.Unmarshal(data, &robot); err != nil {
+			errCh <- err
+			return
+		}
+		resultCh <- &robot
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case err := <-errCh:
+		return nil, err
+	case robot := <-resultCh:
+		return robot, nil
+	}
+}
+
+func ParseRobotXMLFileContext(ctx context.Context, path string) (*Robot, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	return ParseRobotXMLBytes(data)
+	return ParseRobotXMLBytesContext(ctx, data)
 }
 
 func CountTests(suite *Suite) (pass int, fail int, total int) {

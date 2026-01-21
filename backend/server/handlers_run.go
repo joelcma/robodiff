@@ -1,8 +1,10 @@
 package backend
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 )
 
 type runRequest struct {
@@ -30,7 +32,10 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	columns, inputFiles, robots, err := s.store.GetRuns([]string{req.RunID})
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	columns, inputFiles, robots, err := s.store.GetRuns(ctx, []string{req.RunID})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -61,7 +66,10 @@ func (s *Server) handleTestDetails(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	test, err := s.store.GetTestDetails(req.RunID, req.TestName)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	test, err := s.store.GetTestDetails(ctx, req.RunID, req.TestName)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return

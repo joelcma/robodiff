@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
@@ -98,7 +99,7 @@ func (s *RunStore) ListRuns() []RunInfo {
 	return infos
 }
 
-func (s *RunStore) GetRuns(ids []string) (columns []string, inputFiles []string, robots []*robotdiff.Robot, err error) {
+func (s *RunStore) GetRuns(ctx context.Context, ids []string) (columns []string, inputFiles []string, robots []*robotdiff.Robot, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -107,11 +108,14 @@ func (s *RunStore) GetRuns(ids []string) (columns []string, inputFiles []string,
 	robots = make([]*robotdiff.Robot, 0, len(ids))
 
 	for _, id := range ids {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, nil, err
+		}
 		e, ok := s.runs[id]
 		if !ok {
 			return nil, nil, nil, fmt.Errorf("%w: %s", errRunNotFound, id)
 		}
-		if err := s.ensureRobotLoadedLocked(e); err != nil {
+		if err := s.ensureRobotLoadedLocked(ctx, e); err != nil {
 			return nil, nil, nil, err
 		}
 		columns = append(columns, e.info.Name)
@@ -369,14 +373,14 @@ func scanStatisticsStream(dec *xml.Decoder) (pass, fail, total int, ok bool, err
 	return 0, 0, 0, false, nil
 }
 
-func (s *RunStore) GetTestDetails(runID, testName string) (*robotdiff.Test, error) {
+func (s *RunStore) GetTestDetails(ctx context.Context, runID, testName string) (*robotdiff.Test, error) {
 	s.mu.Lock()
 	entry, ok := s.runs[runID]
 	if !ok {
 		s.mu.Unlock()
 		return nil, errRunNotFound
 	}
-	if err := s.ensureRobotLoadedLocked(entry); err != nil {
+	if err := s.ensureRobotLoadedLocked(ctx, entry); err != nil {
 		s.mu.Unlock()
 		return nil, err
 	}
@@ -398,7 +402,7 @@ func (s *RunStore) GetTestDetails(runID, testName string) (*robotdiff.Test, erro
 	return nil, fmt.Errorf("test %q not found in run", testName)
 }
 
-func (s *RunStore) ensureRobotLoadedLocked(entry *runEntry) error {
+func (s *RunStore) ensureRobotLoadedLocked(ctx context.Context, entry *runEntry) error {
 	fi, err := os.Stat(entry.abs)
 	if err != nil {
 		return fmt.Errorf("stat run %s: %w", entry.abs, err)
@@ -408,7 +412,7 @@ func (s *RunStore) ensureRobotLoadedLocked(entry *runEntry) error {
 		return nil
 	}
 
-	robot, err := robotdiff.ParseRobotXMLFile(entry.abs)
+	robot, err := robotdiff.ParseRobotXMLFileContext(ctx, entry.abs)
 	if err != nil {
 		return fmt.Errorf("parse run %s: %w", entry.abs, err)
 	}
