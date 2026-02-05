@@ -46,7 +46,6 @@ export default function RunList({
   onSelectFailed,
   onClearSelection,
   onGenerate,
-  onComparePinned,
   onDeleteSelected,
   deletingRuns,
   loadingDiff,
@@ -57,7 +56,6 @@ export default function RunList({
 }) {
   const selectedIds = Array.from(selected);
   const totalSize = runs.reduce((sum, run) => sum + (run.size || 0), 0);
-  const pinnedCount = runs.filter((r) => pinned?.has(r.id)).length;
 
   function confirmDelete() {
     if (!onDeleteSelected) return;
@@ -126,14 +124,6 @@ export default function RunList({
               {deletingRuns
                 ? "🗑️ Deleting…"
                 : `🗑️ Delete (${selectedIds.length})`}
-            </button>
-            <button
-              className="secondary"
-              onClick={onComparePinned}
-              disabled={pinnedCount < 1 || loadingDiff}
-              title="Compare pinned runs"
-            >
-              {loadingDiff ? "⟳ Loading…" : `📌 Compare (${pinnedCount})`}
             </button>
             <button
               className="primary"

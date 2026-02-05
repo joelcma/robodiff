@@ -313,13 +313,6 @@ function App() {
     });
   }
 
-  function comparePinned() {
-    const ids = filteredRuns.map((r) => r.id).filter((id) => pinned.has(id));
-    if (ids.length < 1) return;
-    setSelected(new Set(ids));
-    generateDiff(ids);
-  }
-
   function selectAll() {
     setSelected(new Set(filteredRuns.map((r) => r.id)));
   }
@@ -393,7 +386,6 @@ function App() {
           onSelectFailed={selectFailed}
           onClearSelection={clearSelection}
           onGenerate={generateDiff}
-          onComparePinned={comparePinned}
           onDeleteSelected={deleteSelectedRuns}
           deletingRuns={deletingRuns}
           loadingDiff={loadingDiff}
