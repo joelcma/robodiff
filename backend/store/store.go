@@ -1,8 +1,8 @@
 package store
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/xml"
@@ -29,14 +29,15 @@ type Config struct {
 }
 
 type RunInfo struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	RelPath   string    `json:"relPath"`
-	ModTime   time.Time `json:"modTime"`
-	Size      int64     `json:"size"`
-	TestCount int       `json:"testCount"`
-	PassCount int       `json:"passCount"`
-	FailCount int       `json:"failCount"`
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	RelPath    string    `json:"relPath"`
+	ModTime    time.Time `json:"modTime"`
+	Size       int64     `json:"size"`
+	DurationMs int64     `json:"durationMs"`
+	TestCount  int       `json:"testCount"`
+	PassCount  int       `json:"passCount"`
+	FailCount  int       `json:"failCount"`
 }
 
 type runEntry struct {
@@ -222,17 +223,27 @@ func (s *RunStore) scanOnce() {
 				pass, fail, total = robotdiff.CountTests(&robot.Suite)
 			}
 
+			startTime, endTime, okTimes, err := readRobotMessageTimes(abs)
+			if err != nil {
+				okTimes = false
+			}
+			var durationMs int64
+			if okTimes && !startTime.IsZero() && !endTime.IsZero() && endTime.After(startTime) {
+				durationMs = endTime.Sub(startTime).Milliseconds()
+			}
+
 			updated[id] = &runEntry{
 				abs: abs,
 				info: RunInfo{
-					ID:        id,
-					Name:      runName,
-					RelPath:   filepath.ToSlash(rel),
-					ModTime:   fi.ModTime(),
-					Size:      runSize,
-					TestCount: total,
-					PassCount: pass,
-					FailCount: fail,
+					ID:         id,
+					Name:       runName,
+					RelPath:    filepath.ToSlash(rel),
+					ModTime:    fi.ModTime(),
+					Size:       runSize,
+					DurationMs: durationMs,
+					TestCount:  total,
+					PassCount:  pass,
+					FailCount:  fail,
 				},
 			}
 		}
@@ -319,6 +330,86 @@ func readRobotStatistics(path string) (pass, fail, total int, ok bool, err error
 	}
 	defer f.Close()
 	return scanStatisticsStream(xml.NewDecoder(f))
+}
+
+func readRobotMessageTimes(path string) (start, end time.Time, ok bool, err error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return time.Time{}, time.Time{}, false, err
+	}
+	defer f.Close()
+
+	dec := xml.NewDecoder(f)
+	foundAny := false
+
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return time.Time{}, time.Time{}, false, err
+		}
+
+		switch se := tok.(type) {
+		case xml.StartElement:
+			if se.Name.Local != "msg" {
+				continue
+			}
+			var timeStr string
+			for _, a := range se.Attr {
+				if a.Name.Local == "time" {
+					timeStr = a.Value
+					break
+				}
+				if a.Name.Local == "timestamp" {
+					timeStr = a.Value
+				}
+			}
+			if timeStr == "" {
+				continue
+			}
+			if t, ok := parseRobotTimestamp(timeStr); ok {
+				if !foundAny {
+					start = t
+					end = t
+					foundAny = true
+				} else {
+					if t.Before(start) {
+						start = t
+					}
+					if t.After(end) {
+						end = t
+					}
+				}
+			}
+		}
+	}
+
+	if foundAny {
+		return start, end, true, nil
+	}
+	return time.Time{}, time.Time{}, false, nil
+}
+
+func parseRobotTimestamp(value string) (time.Time, bool) {
+	if strings.TrimSpace(value) == "" {
+		return time.Time{}, false
+	}
+	layouts := []string{
+		time.RFC3339Nano,
+		"2006-01-02T15:04:05.000000",
+		"2006-01-02T15:04:05.000",
+		"2006-01-02T15:04:05",
+		"20060102 15:04:05.000",
+		"20060102 15:04:05",
+	}
+	for _, layout := range layouts {
+		if t, err := time.ParseInLocation(layout, value, time.Local); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
 }
 
 func scanStatisticsBytes(b []byte) (pass, fail, total int, ok bool, err error) {

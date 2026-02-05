@@ -57,10 +57,7 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
-    localStorage.setItem(
-      "robotdiff-pins",
-      JSON.stringify(Array.from(pinned))
-    );
+    localStorage.setItem("robotdiff-pins", JSON.stringify(Array.from(pinned)));
   }, [pinned]);
 
   // Filtered and sorted runs
@@ -69,7 +66,7 @@ function App() {
       searchQuery
         ? r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
           r.relPath.toLowerCase().includes(searchQuery.toLowerCase())
-        : true
+        : true,
     );
 
     filtered.sort((a, b) => {
@@ -81,6 +78,9 @@ function App() {
       if (sortBy === "modTime") {
         aVal = new Date(aVal).getTime();
         bVal = new Date(bVal).getTime();
+      } else if (sortBy === "durationMs") {
+        aVal = Number.isFinite(aVal) ? aVal : 0;
+        bVal = Number.isFinite(bVal) ? bVal : 0;
       }
       const diff = sortDir === "asc" ? aVal - bVal : bVal - aVal;
       return typeof aVal === "string"
@@ -330,7 +330,7 @@ function App() {
 
   function selectFailed() {
     setSelected(
-      new Set(filteredRuns.filter((r) => r.failCount > 0).map((r) => r.id))
+      new Set(filteredRuns.filter((r) => r.failCount > 0).map((r) => r.id)),
     );
   }
 
@@ -373,7 +373,9 @@ function App() {
         <div className="error">
           ⚠️ {error.message}
           {error.code ? <span> ({error.code})</span> : null}
-          {error.detail ? <div className="error-detail">{error.detail}</div> : null}
+          {error.detail ? (
+            <div className="error-detail">{error.detail}</div>
+          ) : null}
         </div>
       ) : null}
 

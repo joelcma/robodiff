@@ -4,12 +4,29 @@ function formatTime(isoOrDate) {
   return d.toLocaleString();
 }
 
+function formatDuration(ms) {
+  if (!Number.isFinite(ms) || ms <= 0) return "";
+  const totalSeconds = Math.round(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(
+      seconds
+    ).padStart(2, "0")}`;
+  }
+  if (minutes > 0) {
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  }
+  return `${seconds}s`;
+}
+
 function formatBytes(bytes) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
   const idx = Math.min(
     Math.floor(Math.log(bytes) / Math.log(1024)),
-    units.length - 1
+    units.length - 1,
   );
   const value = bytes / Math.pow(1024, idx);
   const precision = value >= 100 ? 0 : value >= 10 ? 1 : 2;
@@ -55,7 +72,7 @@ export default function RunList({
       chosen.length > 10 ? `\n(and ${chosen.length - 10} more)` : "";
 
     const ok = window.confirm(
-      `Delete ${selectedIds.length} selected run(s)?\n\nThis deletes the entire run folder(s) from disk and cannot be undone.\n\n${names}${suffix}`
+      `Delete ${selectedIds.length} selected run(s)?\n\nThis deletes the entire run folder(s) from disk and cannot be undone.\n\n${names}${suffix}`,
     );
     if (!ok) return;
     onDeleteSelected(selectedIds);
@@ -116,9 +133,7 @@ export default function RunList({
               disabled={pinnedCount < 1 || loadingDiff}
               title="Compare pinned runs"
             >
-              {loadingDiff
-                ? "⟳ Loading…"
-                : `📌 Compare (${pinnedCount})`}
+              {loadingDiff ? "⟳ Loading…" : `📌 Compare (${pinnedCount})`}
             </button>
             <button
               className="primary"
@@ -133,8 +148,8 @@ export default function RunList({
               {loadingDiff
                 ? "⟳ Loading…"
                 : selectedIds.length === 1
-                ? `👁️ View Run`
-                : `⚡ Compare (${selectedIds.length})`}
+                  ? `👁️ View Run`
+                  : `⚡ Compare (${selectedIds.length})`}
             </button>
           </div>
         </div>
@@ -145,12 +160,14 @@ export default function RunList({
           {loadingRuns
             ? "Loading runs…"
             : searchQuery
-            ? "No runs match your search."
-            : "No runs found yet."}
+              ? "No runs match your search."
+              : "No runs found yet."}
           {!loadingRuns && !searchQuery ? (
             <div className="empty-state-detail">
               <div>Watching: {dir || "(unknown)"}</div>
-              <div>Tip: point the server at a folder with Robot output.xml files.</div>
+              <div>
+                Tip: point the server at a folder with Robot output.xml files.
+              </div>
             </div>
           ) : null}
         </div>
@@ -197,6 +214,20 @@ export default function RunList({
                 >
                   Modified
                   {sortBy === "modTime" && (
+                    <span className="sort-arrow">
+                      {sortDir === "asc" ? "↑" : "↓"}
+                    </span>
+                  )}
+                </th>
+                <th
+                  className={`sortable ${
+                    sortBy === "durationMs" ? "sort-active" : ""
+                  }`}
+                  onClick={() => onSort("durationMs")}
+                  style={{ width: "110px" }}
+                >
+                  Duration
+                  {sortBy === "durationMs" && (
                     <span className="sort-arrow">
                       {sortDir === "asc" ? "↑" : "↓"}
                     </span>
@@ -307,6 +338,9 @@ export default function RunList({
                     </td>
                     <td className="name-cell">{run.name}</td>
                     <td className="time-cell">{formatTime(run.modTime)}</td>
+                    <td className="num-cell">
+                      {formatDuration(run.durationMs) || "—"}
+                    </td>
                     <td className="num-cell">{run.testCount}</td>
                     <td className="num-cell pass-cell">{run.passCount}</td>
                     <td className="num-cell fail-cell">{run.failCount}</td>
