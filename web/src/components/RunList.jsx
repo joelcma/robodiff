@@ -47,7 +47,9 @@ export default function RunList({
   onClearSelection,
   onGenerate,
   onDeleteSelected,
+  onRenameRun,
   deletingRuns,
+  renamingRunId,
   loadingDiff,
   loadingRuns,
   sortBy,
@@ -74,6 +76,17 @@ export default function RunList({
     );
     if (!ok) return;
     onDeleteSelected(selectedIds);
+  }
+
+  function promptRename(run) {
+    if (!onRenameRun || !run?.id) return;
+    const current = String(run.name || "").trim();
+    const suggested = current || String(run.relPath || "").trim();
+    const input = window.prompt("Rename run", suggested);
+    if (input === null) return;
+    const next = input.trim();
+    if (!next || next === current) return;
+    onRenameRun(run.id, next);
   }
 
   return (
@@ -326,7 +339,24 @@ export default function RunList({
                         onClick={(e) => e.stopPropagation()}
                       />
                     </td>
-                    <td className="name-cell">{run.name}</td>
+                    <td className="name-cell">
+                      <div className="name-cell-content">
+                        <span>{run.name}</span>
+                        <button
+                          type="button"
+                          className="rename-btn"
+                          title="Rename run"
+                          disabled={renamingRunId === run.id}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            promptRename(run);
+                          }}
+                        >
+                          {renamingRunId === run.id ? "…" : "✎"}
+                        </button>
+                      </div>
+                    </td>
                     <td className="time-cell">{formatTime(run.modTime)}</td>
                     <td className="num-cell">
                       {formatDuration(run.durationMs) || "—"}

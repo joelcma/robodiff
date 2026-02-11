@@ -1004,6 +1004,38 @@ kbd {
   color: #e9d5ff;
 }
 
+.name-cell-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rename-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.8);
+  border-radius: 6px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.rename-btn:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.rename-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .time-cell {
   font-family: "Courier New", monospace;
   font-size: 0.9em;

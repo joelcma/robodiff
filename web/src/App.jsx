@@ -27,6 +27,7 @@ function App() {
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [loadingDiff, setLoadingDiff] = useState(false);
   const [deletingRuns, setDeletingRuns] = useState(false);
+  const [renamingRunId, setRenamingRunId] = useState("");
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("modTime");
@@ -251,6 +252,54 @@ function App() {
     }
   }
 
+  async function renameRun(runId, newName) {
+    const nextName = (newName || "").trim();
+    if (!runId || !nextName) return;
+
+    setRenamingRunId(runId);
+    setError(null);
+    try {
+      const res = await fetch("/api/rename-run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runId, newName: nextName }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError({
+          code: data?.code || "RENAME_FAILED",
+          message: data?.error || `Rename failed (${res.status})`,
+          detail: data?.detail || "",
+        });
+        return;
+      }
+
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(runId);
+        return next;
+      });
+      setPinned((prev) => {
+        const next = new Set(prev);
+        next.delete(runId);
+        return next;
+      });
+      if (singleRun?.runId === runId) {
+        setSingleRun(null);
+        setShowRunList(true);
+      }
+      await refreshRuns();
+    } catch (e) {
+      setError({
+        code: "RENAME_FAILED",
+        message: e?.message || String(e),
+        detail: "",
+      });
+    } finally {
+      setRenamingRunId("");
+    }
+  }
+
   useEffect(() => {
     refreshRuns();
     const t = setInterval(refreshRuns, 2000);
@@ -387,7 +436,9 @@ function App() {
           onClearSelection={clearSelection}
           onGenerate={generateDiff}
           onDeleteSelected={deleteSelectedRuns}
+          onRenameRun={renameRun}
           deletingRuns={deletingRuns}
+          renamingRunId={renamingRunId}
           loadingDiff={loadingDiff}
           loadingRuns={loadingRuns}
           sortBy={sortBy}
