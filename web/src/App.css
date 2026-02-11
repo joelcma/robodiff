@@ -624,6 +624,61 @@ html[data-theme="light"] .filter-buttons button.active {
   padding: 1em;
 }
 
+.runlist-panel {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - 170px);
+  min-height: 360px;
+  overflow: hidden;
+}
+
+.runlist-table-wrapper {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+}
+
+.runlist-table-wrapper::after {
+  content: "";
+  position: sticky;
+  left: 0;
+  height: 14px;
+  display: block;
+  pointer-events: none;
+  z-index: 4;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+}
+
+.runlist-table-wrapper::before {
+  top: 0;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), transparent);
+}
+
+.runlist-table-wrapper::after {
+  bottom: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.55), transparent);
+}
+
+.runlist-table-wrapper .runs th {
+  background: #1a1d29;
+  box-shadow: 0 1px 0 rgba(139, 92, 246, 0.35);
+}
+
+html[data-theme="light"] .runlist-table-wrapper .runs th {
+  background: #ffffff;
+  box-shadow: 0 1px 0 rgba(17, 17, 17, 0.14);
+}
+
+html[data-theme="light"] .runlist-table-wrapper::before {
+  background: linear-gradient(to bottom, rgba(17, 17, 17, 0.22), transparent);
+}
+
+html[data-theme="light"] .runlist-table-wrapper::after {
+  background: linear-gradient(to top, rgba(17, 17, 17, 0.22), transparent);
+}
+
 /* Collapsible suites */
 .suite-header {
   display: flex;

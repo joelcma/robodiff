@@ -90,7 +90,7 @@ export default function RunList({
   }
 
   return (
-    <section className="panel p-1">
+    <section className="panel p-1 runlist-panel">
       <div className="panel-header">
         <h2>Test Runs</h2>
         <div className="controls">
@@ -175,7 +175,7 @@ export default function RunList({
           ) : null}
         </div>
       ) : (
-        <div className="table-wrapper">
+        <div className="table-wrapper runlist-table-wrapper">
           <table className="runs">
             <thead>
               <tr>
