@@ -41,9 +41,9 @@ type RunInfo struct {
 }
 
 type runEntry struct {
-	info  RunInfo
-	abs   string
-	robot *robotdiff.Robot
+	info         RunInfo
+	abs          string
+	robot        *robotdiff.Robot
 	robotModTime time.Time
 	robotSize    int64
 }
@@ -581,6 +581,87 @@ func (s *RunStore) DeleteRuns(ids []string) (deleted int, err error) {
 	return deleted, nil
 }
 
+func (s *RunStore) RenameRun(id, newName string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.New("run id required")
+	}
+
+	normalized, err := normalizeRunName(newName)
+	if err != nil {
+		return err
+	}
+
+	rootAbs, err := filepath.Abs(s.dir)
+	if err != nil {
+		return fmt.Errorf("resolve root dir: %w", err)
+	}
+	rootReal := rootAbs
+	if r, err := filepath.EvalSymlinks(rootAbs); err == nil {
+		rootReal = r
+	}
+
+	s.mu.RLock()
+	entry := s.runs[id]
+	s.mu.RUnlock()
+	if entry == nil {
+		return errRunNotFound
+	}
+
+	fileAbs, err := filepath.Abs(entry.abs)
+	if err != nil {
+		return fmt.Errorf("resolve run file: %w", err)
+	}
+	fileReal := fileAbs
+	if r, err := filepath.EvalSymlinks(fileAbs); err == nil {
+		fileReal = r
+	}
+
+	dirReal := filepath.Dir(fileReal)
+	if !isSubpath(rootReal, dirReal) {
+		return fmt.Errorf("refusing to rename outside runs root: %s", dirReal)
+	}
+
+	if samePath(rootReal, dirReal) {
+		// If XML is in the root, rename the XML file itself.
+		targetFile := filepath.Join(rootReal, normalized+".xml")
+		if samePath(fileReal, targetFile) {
+			return nil
+		}
+		if !isSubpath(rootReal, targetFile) {
+			return fmt.Errorf("refusing to rename outside runs root: %s", targetFile)
+		}
+		if _, err := os.Stat(targetFile); err == nil {
+			return fmt.Errorf("target run file already exists: %s", filepath.Base(targetFile))
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("check target run file: %w", err)
+		}
+		if err := os.Rename(fileReal, targetFile); err != nil {
+			return fmt.Errorf("rename run file: %w", err)
+		}
+		return nil
+	}
+
+	// If XML is in a subfolder, rename the containing folder.
+	parentDir := filepath.Dir(dirReal)
+	targetDir := filepath.Join(parentDir, normalized)
+	if samePath(dirReal, targetDir) {
+		return nil
+	}
+	if !isSubpath(rootReal, parentDir) || !isSubpath(rootReal, targetDir) {
+		return fmt.Errorf("refusing to rename outside runs root: %s", targetDir)
+	}
+	if _, err := os.Stat(targetDir); err == nil {
+		return fmt.Errorf("target run folder already exists: %s", filepath.Base(targetDir))
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("check target run folder: %w", err)
+	}
+	if err := os.Rename(dirReal, targetDir); err != nil {
+		return fmt.Errorf("rename run folder: %w", err)
+	}
+	return nil
+}
+
 func runFolderSize(dir string) int64 {
 	files := []string{"output.xml", "log.html", "report.html"}
 	var total int64
@@ -609,6 +690,23 @@ func uniqueNonEmptyStrings(ids []string) []string {
 		out = append(out, id)
 	}
 	return out
+}
+
+func normalizeRunName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if strings.HasSuffix(strings.ToLower(name), ".xml") {
+		name = strings.TrimSpace(strings.TrimSuffix(name, filepath.Ext(name)))
+	}
+	if name == "" || name == "." || name == ".." {
+		return "", errors.New("invalid run name")
+	}
+	if strings.Contains(name, "/") || strings.Contains(name, "\\") {
+		return "", errors.New("invalid run name")
+	}
+	if strings.ContainsRune(name, 0) {
+		return "", errors.New("invalid run name")
+	}
+	return name, nil
 }
 
 func isSubpath(root, path string) bool {

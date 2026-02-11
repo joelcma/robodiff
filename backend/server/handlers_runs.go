@@ -9,6 +9,11 @@ type deleteRunsRequest struct {
 	RunIDs []string `json:"runIds"`
 }
 
+type renameRunRequest struct {
+	RunID   string `json:"runId"`
+	NewName string `json:"newName"`
+}
+
 func (s *Server) handleDeleteRuns(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -37,6 +42,36 @@ func (s *Server) handleDeleteRuns(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"deleted": deleted,
+	})
+}
+
+func (s *Server) handleRenameRun(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req renameRunRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.RunID == "" || req.NewName == "" {
+		writeError(w, http.StatusBadRequest, "runId and newName required")
+		return
+	}
+
+	if err := s.store.RenameRun(req.RunID, req.NewName); err != nil {
+		status, code, msg, detail := classifyError(err)
+		writeErrorWithCode(w, status, code, msg, detail)
+		return
+	}
+
+	// Refresh immediately so the UI sees the renamed run on the next /api/runs.
+	s.store.ScanOnce()
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"renamed": true,
 	})
 }
 
