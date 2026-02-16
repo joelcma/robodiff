@@ -2,6 +2,8 @@
 
 Modern web application for viewing and comparing Robot Framework test results. Built with a Go backend and React frontend, it watches a directory for Robot Framework XML files and provides real-time interactive analysis.
 
+Robodiff also ships as a desktop Electron app that bundles the Go backend.
+
 ## Disclaimer
 
 I've heavily utilized AI coding agents for this project and I have not been overly concerned with perfect code quality or architecture. The focus has been on shipping a functional tool quickly. Please excuse any rough edges in the implementation.
@@ -47,6 +49,32 @@ Start the server:
 ```
 
 Then open http://localhost:8080 in your browser (or whatever address you set).
+
+## Desktop app (Electron)
+
+The Electron app bundles the Go backend and the React UI. You can select a results folder from the UI, and the last folder is remembered.
+
+### Build and run (dev)
+
+```bash
+make electron-dev
+```
+
+### Build and install (macOS)
+
+```bash
+make electron-install-mac
+```
+
+This builds the app and copies `Robodiff.app` into `/Applications` so it appears in Spotlight.
+
+### Build installer (Windows)
+
+```bash
+make electron-build-win
+```
+
+This produces an NSIS installer under `dist/`.
 
 ## Usage / Flags
 
@@ -181,6 +209,11 @@ go build -o robodiff
 ```
 
 The Go binary serves the built React app from `web/dist/`. If `web/dist/index.html` is missing, the server returns a helpful message with build instructions.
+
+## Desktop app notes
+
+- Icons are generated from [web/public/robot.svg](web/public/robot.svg) during `npm run build`.
+- The packaged app uses a relative Vite base path so assets load correctly from `file://`.
 
 ## Project structure
 
