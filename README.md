@@ -23,7 +23,7 @@ I've heavily utilized AI coding agents for this project and I have not been over
 Build:
 
 ```bash
-go build -o robotdiff
+go build -o robodiff
 ```
 
 Install (Go 1.17+):
@@ -37,13 +37,13 @@ Start the server:
 
 ```bash
 # Watch a directory for Robot Framework XML files
-./robotdiff /path/to/robot/results
+./robodiff /path/to/robot/results
 
 # Or use current directory
-./robotdiff .
+./robodiff .
 
 # Custom port
-./robotdiff --addr :3000 /path/to/results
+./robodiff --addr :3000 /path/to/results
 ```
 
 Then open http://localhost:8080 in your browser (or whatever address you set).
@@ -51,7 +51,7 @@ Then open http://localhost:8080 in your browser (or whatever address you set).
 ## Usage / Flags
 
 ```
-Usage: robotdiff [options] [<directory>]
+Usage: robodiff [options] [<directory>]
 
 Starts HTTP server and watches directory for Robot Framework XML files.
 
@@ -65,10 +65,10 @@ Examples:
 
 ```bash
 # Start server watching /tmp/robot_runs
-./robotdiff /tmp/robot_runs
+./robodiff /tmp/robot_runs
 
 # Custom port
-./robotdiff --addr :3000 /tmp/robot_runs
+./robodiff --addr :3000 /tmp/robot_runs
 
 
 ```
@@ -153,8 +153,8 @@ Examples:
 ### Backend development
 
 ```bash
-go build -o robotdiff
-./robotdiff /path/to/test/data
+go build -o robodiff
+./robodiff /path/to/test/data
 ```
 
 ### Frontend development
@@ -168,7 +168,7 @@ npm run dev
 The Vite dev server proxies `/api` requests to `localhost:8080` (see [web/vite.config.js](web/vite.config.js)), so run the Go backend separately:
 
 ```bash
-./robotdiff --addr :8080 /path/to/test/data
+./robodiff --addr :8080 /path/to/test/data
 ```
 
 ### Production build
@@ -177,7 +177,7 @@ The Vite dev server proxies `/api` requests to `localhost:8080` (see [web/vite.c
 cd web
 npm run build
 cd ..
-go build -o robotdiff
+go build -o robodiff
 ```
 
 The Go binary serves the built React app from `web/dist/`. If `web/dist/index.html` is missing, the server returns a helpful message with build instructions.

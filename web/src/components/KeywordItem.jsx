@@ -8,6 +8,7 @@ import {
   isHttpRequestMessage,
 } from "../utils/httpCurl";
 import HttpResponseModal from "./HttpResponseModal";
+import { buildApiUrl } from "../utils/apiBase";
 
 async function copyToClipboard(text) {
   try {
@@ -81,7 +82,7 @@ export default function KeywordItem({ keyword, depth }) {
   async function tryHttpRequest(payload) {
     try {
       setIsSending(true);
-      const res = await fetch("/api/http-try", {
+      const res = await fetch(buildApiUrl("/api/http-try"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

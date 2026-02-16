@@ -9,6 +9,8 @@ export default function Header({
   onToggleRunList,
   theme,
   onToggleTheme,
+  onEditDir,
+  canEditDir,
 }) {
   return (
     <header className="header">
@@ -27,6 +29,16 @@ export default function Header({
           <div className="meta-info">
             <span className="label">Watching:</span>{" "}
             <code>{dir || "(unknown)"}</code>
+            {canEditDir ? (
+              <button
+                type="button"
+                className="edit-dir-btn"
+                title="Change folder"
+                onClick={onEditDir}
+              >
+                ✎
+              </button>
+            ) : null}
             <span className="divider">|</span>
             <span className="label">Runs:</span> <strong>{runCount}</strong>
             <span className="divider">|</span>

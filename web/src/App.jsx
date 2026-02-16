@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 import Header from "./components/Header";
 import HelpModal from "./components/HelpModal";
+import FolderModal from "./components/FolderModal";
 import RunList from "./components/RunList";
 import SingleRunView from "./components/SingleRunView";
 import DiffView from "./components/DiffView";
+import { buildApiUrl } from "./utils/apiBase";
 
 function calculateTestStatus(results = []) {
   const list = Array.isArray(results) ? results : [];
@@ -36,9 +38,12 @@ function App() {
   const [collapsedSuites, setCollapsedSuites] = useState(() => new Set());
   const [showHelp, setShowHelp] = useState(false);
   const [showRunList, setShowRunList] = useState(true);
+  const [selectingDir, setSelectingDir] = useState(false);
+  const [manualDir, setManualDir] = useState("");
+  const [showDirModal, setShowDirModal] = useState(false);
   const [pinned, setPinned] = useState(() => {
     try {
-      const raw = localStorage.getItem("robotdiff-pins");
+      const raw = localStorage.getItem("robodiff-pins");
       const parsed = raw ? JSON.parse(raw) : [];
       return new Set(Array.isArray(parsed) ? parsed : []);
     } catch {
@@ -46,7 +51,7 @@ function App() {
     }
   });
   const [theme, setTheme] = useState(() => {
-    return localStorage.getItem("robotdiff-theme") || "dark";
+    return localStorage.getItem("robodiff-theme") || "dark";
   });
 
   const selectedIds = useMemo(() => Array.from(selected), [selected]);
@@ -54,11 +59,11 @@ function App() {
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
     document.documentElement.style.colorScheme = theme;
-    localStorage.setItem("robotdiff-theme", theme);
+    localStorage.setItem("robodiff-theme", theme);
   }, [theme]);
 
   useEffect(() => {
-    localStorage.setItem("robotdiff-pins", JSON.stringify(Array.from(pinned)));
+    localStorage.setItem("robodiff-pins", JSON.stringify(Array.from(pinned)));
   }, [pinned]);
 
   // Filtered and sorted runs
@@ -117,7 +122,7 @@ function App() {
     setLoadingRuns(true);
     setError(null);
     try {
-      const res = await fetch("/api/runs");
+      const res = await fetch(buildApiUrl("/api/runs"));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError({
@@ -140,6 +145,59 @@ function App() {
     }
   }
 
+  async function waitForBackendReady({ attempts = 10, delayMs = 200 } = {}) {
+    for (let i = 0; i < attempts; i += 1) {
+      try {
+        const res = await fetch(buildApiUrl("/api/health"));
+        if (res.ok) return true;
+      } catch {
+        // ignore and retry
+      }
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    return false;
+  }
+
+  async function handleSelectDir() {
+    if (!window?.robodiff?.selectDirectory || selectingDir) return;
+    setSelectingDir(true);
+    try {
+      const result = await window.robodiff.selectDirectory();
+      if (result?.dir) {
+        await waitForBackendReady();
+        await refreshRuns();
+      }
+      return result;
+    } finally {
+      setSelectingDir(false);
+    }
+  }
+
+  async function handleSetDir(path) {
+    if (!window?.robodiff?.setDirectory || selectingDir) return;
+    const nextPath = String(path || "").trim();
+    if (!nextPath) return;
+    setSelectingDir(true);
+    try {
+      const result = await window.robodiff.setDirectory(nextPath);
+      if (result?.dir) {
+        await waitForBackendReady();
+        await refreshRuns();
+      }
+      return result;
+    } finally {
+      setSelectingDir(false);
+    }
+  }
+
+  function handleOpenDirModal() {
+    if (!window?.robodiff?.selectDirectory && !window?.robodiff?.setDirectory) {
+      return;
+    }
+    setManualDir(dir || "");
+    setShowDirModal(true);
+  }
+
   async function generateDiff(idsOrEvent) {
     const ids = Array.isArray(idsOrEvent) ? idsOrEvent : selectedIds;
     if (!ids || ids.length < 1) return;
@@ -151,7 +209,7 @@ function App() {
     // If only 1 run selected, view that run
     if (ids.length === 1) {
       try {
-        const res = await fetch("/api/run", {
+        const res = await fetch(buildApiUrl("/api/run"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ runId: ids[0] }),
@@ -181,7 +239,7 @@ function App() {
 
     // Otherwise generate diff
     try {
-      const res = await fetch("/api/diff", {
+      const res = await fetch(buildApiUrl("/api/diff"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ runIds: ids, title }),
@@ -215,7 +273,7 @@ function App() {
     setDeletingRuns(true);
     setError(null);
     try {
-      const res = await fetch("/api/delete-runs", {
+      const res = await fetch(buildApiUrl("/api/delete-runs"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ runIds }),
@@ -259,7 +317,7 @@ function App() {
     setRenamingRunId(runId);
     setError(null);
     try {
-      const res = await fetch("/api/rename-run", {
+      const res = await fetch(buildApiUrl("/api/rename-run"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ runId, newName: nextName }),
@@ -409,6 +467,10 @@ function App() {
         onToggleTheme={() =>
           setTheme((prev) => (prev === "dark" ? "light" : "dark"))
         }
+        onEditDir={handleOpenDirModal}
+        canEditDir={Boolean(
+          window?.robodiff?.selectDirectory || window?.robodiff?.setDirectory,
+        )}
       />
 
       {error ? (
@@ -478,6 +540,20 @@ function App() {
       )}
 
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
+
+      {showDirModal && (
+        <FolderModal
+          currentDir={dir}
+          value={manualDir}
+          onChange={setManualDir}
+          onClose={() => setShowDirModal(false)}
+          onSelectDir={handleSelectDir}
+          onSetDir={handleSetDir}
+          selectingDir={selectingDir}
+          canSelectDir={Boolean(window?.robodiff?.selectDirectory)}
+          canSetDir={Boolean(window?.robodiff?.setDirectory)}
+        />
+      )}
     </div>
   );
 }

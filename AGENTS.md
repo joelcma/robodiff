@@ -2,15 +2,15 @@
 
 ## Project Structure & Module Organization
 
-- Go CLI: `main.go` contains the `robotdiff` entrypoint (server mode).
+- Go CLI: `main.go` contains the `robodiff` entrypoint (server mode).
 - Go backend: `backend/server/` is the HTTP API + static file serving for the React build.
 - Robot parsing/diff: `backend/diff/` parses Robot output.xml and computes comparisons.
 - React frontend: `web/` contains the UI (Vite dev server; production build to `web/dist/`).
 
 Key commands:
 
-- `go build -o robotdiff` — builds the local binary.
-- `./robotdiff --dir /path/to/results` — starts the server.
+- `go build -o robodiff` — builds the local binary.
+- `./robodiff --dir /path/to/results` — starts the server.
 - `cd web && npm install && npm run dev` — runs the UI dev server.
 - `cd web && npm run build` — builds UI assets to `web/dist/`.
 - `go install ./@latest` — installs the CLI into `$(go env GOPATH)/bin` (Go 1.17+).

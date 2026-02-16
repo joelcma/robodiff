@@ -12,10 +12,10 @@ import (
 	"robot_diff/backend/store"
 )
 
-const usage = `Robotdiff: local server + React UI for Robot Framework outputs
+const usage = `robodiff: local server + React UI for Robot Framework outputs
 
 Usage:
-	robotdiff [options] [<results-dir>]
+	robodiff [options] [<results-dir>]
 
 Starts a local HTTP server and scans a directory for Robot Framework output files
 (typically named 'output.xml'). If <results-dir> is omitted, the current directory
@@ -28,10 +28,10 @@ Options:
 	-h, --help               Print this usage instruction.
 
 Examples:
-	robotdiff
-	robotdiff .
-	robotdiff --addr :3000 /path/to/results
-	robotdiff --dir /path/to/results
+	robodiff
+	robodiff .
+	robodiff --addr :3000 /path/to/results
+	robodiff --dir /path/to/results
 `
 
 type Config struct {

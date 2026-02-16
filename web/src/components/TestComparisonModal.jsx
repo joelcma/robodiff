@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import KeywordItem from "./KeywordItem";
 import { formatTime } from "../utils/timeFormatter";
+import { buildApiUrl } from "../utils/apiBase";
 
 export default function TestComparisonModal({
   suiteName,
@@ -49,7 +50,7 @@ export default function TestComparisonModal({
           return { missing: true };
         }
         try {
-          const res = await fetch("/api/test-details", {
+          const res = await fetch(buildApiUrl("/api/test-details"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ runId, testName: lookupName }),
@@ -62,7 +63,7 @@ export default function TestComparisonModal({
         } catch (err) {
           return { error: String(err) };
         }
-      })
+      }),
     ).then((items) => {
       if (cancelled) return;
       const merged = items.map((item) => ({
@@ -161,6 +162,6 @@ export default function TestComparisonModal({
         </div>
       </div>
     </div>,
-    document.body
+    document.body,
   );
 }

@@ -1,6 +1,6 @@
-/robotdiff
+/robodiff
 /robot_diff
-/robotdiff.html
+/robodiff.html
 *.xml
 .DS_Store
 
@@ -11,3 +11,7 @@ __pycache__/
 # React frontend
 web/node_modules/
 web/dist/
+node_modules/
+bin/
+dist/
+build/

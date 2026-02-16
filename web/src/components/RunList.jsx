@@ -12,7 +12,7 @@ function formatDuration(ms) {
   const seconds = totalSeconds % 60;
   if (hours > 0) {
     return `${hours}:${String(minutes).padStart(2, "0")}:${String(
-      seconds
+      seconds,
     ).padStart(2, "0")}`;
   }
   if (minutes > 0) {
@@ -160,14 +160,9 @@ export default function RunList({
 
       {runs.length === 0 ? (
         <div className="empty-state">
-          {loadingRuns
-            ? "Loading runs…"
-            : searchQuery
-              ? "No runs match your search."
-              : "No runs found yet."}
-          {!loadingRuns && !searchQuery ? (
+          {searchQuery ? "No runs match your search." : "No runs found yet."}
+          {!searchQuery ? (
             <div className="empty-state-detail">
-              <div>Watching: {dir || "(unknown)"}</div>
               <div>
                 Tip: point the server at a folder with Robot output.xml files.
               </div>

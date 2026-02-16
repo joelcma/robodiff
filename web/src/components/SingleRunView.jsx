@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import Sidebar from "./Sidebar";
 import TestDetailsPanel from "./TestDetailsPanel";
+import { buildApiUrl } from "../utils/apiBase";
 
 export default function SingleRunView({
   singleRun,
@@ -21,7 +22,7 @@ export default function SingleRunView({
   useLayoutEffect(() => {
     if (!mainContentRef.current || !activeTestName) return;
     const target = mainContentRef.current.querySelector(
-      `[data-test-row="${CSS.escape(activeTestName)}"]`
+      `[data-test-row="${CSS.escape(activeTestName)}"]`,
     );
     if (!target) return;
     target.scrollIntoView({ block: "center", inline: "nearest" });
@@ -39,7 +40,7 @@ export default function SingleRunView({
     console.log("Sending test details request:", payload);
 
     try {
-      const res = await fetch("/api/test-details", {
+      const res = await fetch(buildApiUrl("/api/test-details"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

@@ -1,4 +1,4 @@
-package robotdiff
+package robodiff
 
 import (
 	"encoding/xml"

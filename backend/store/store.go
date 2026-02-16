@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	robotdiff "robot_diff/backend/diff"
+	robodiff "robot_diff/backend/diff"
 )
 
 var errRunNotFound = errors.New("run not found")
@@ -43,9 +43,11 @@ type RunInfo struct {
 type runEntry struct {
 	info         RunInfo
 	abs          string
-	robot        *robotdiff.Robot
+	robot        *robodiff.Robot
 	robotModTime time.Time
 	robotSize    int64
+	statsIncomplete    bool
+	durationIncomplete bool
 }
 
 type RunStore struct {
@@ -54,6 +56,9 @@ type RunStore struct {
 
 	mu   sync.RWMutex
 	runs map[string]*runEntry
+
+	fillMu         sync.Mutex
+	fillInProgress bool
 }
 
 func NewRunStore(dir string, interval time.Duration) *RunStore {
@@ -100,13 +105,13 @@ func (s *RunStore) ListRuns() []RunInfo {
 	return infos
 }
 
-func (s *RunStore) GetRuns(ctx context.Context, ids []string) (columns []string, inputFiles []string, robots []*robotdiff.Robot, err error) {
+func (s *RunStore) GetRuns(ctx context.Context, ids []string) (columns []string, inputFiles []string, robots []*robodiff.Robot, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	columns = make([]string, 0, len(ids))
 	inputFiles = make([]string, 0, len(ids))
-	robots = make([]*robotdiff.Robot, 0, len(ids))
+	robots = make([]*robodiff.Robot, 0, len(ids))
 
 	for _, id := range ids {
 		if err := ctx.Err(); err != nil {
@@ -124,6 +129,121 @@ func (s *RunStore) GetRuns(ctx context.Context, ids []string) (columns []string,
 		robots = append(robots, e.robot)
 	}
 	return columns, inputFiles, robots, nil
+}
+
+func (s *RunStore) startBackgroundFill() {
+	s.fillMu.Lock()
+	if s.fillInProgress {
+		s.fillMu.Unlock()
+		return
+	}
+	s.fillInProgress = true
+	s.fillMu.Unlock()
+
+	go func() {
+		defer func() {
+			s.fillMu.Lock()
+			s.fillInProgress = false
+			s.fillMu.Unlock()
+		}()
+
+		ids := s.collectIncompleteIDs()
+		if len(ids) == 0 {
+			return
+		}
+
+		workerCount := runtime.GOMAXPROCS(0) / 2
+		if workerCount < 1 {
+			workerCount = 1
+		}
+
+		jobs := make(chan string)
+		var wg sync.WaitGroup
+		for i := 0; i < workerCount; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for id := range jobs {
+					s.hydrateRun(id)
+				}
+			}()
+		}
+
+		for _, id := range ids {
+			jobs <- id
+		}
+		close(jobs)
+		wg.Wait()
+	}()
+}
+
+func (s *RunStore) collectIncompleteIDs() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	ids := make([]string, 0, len(s.runs))
+	for id, entry := range s.runs {
+		if entry == nil {
+			continue
+		}
+		if entry.statsIncomplete || entry.durationIncomplete {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+func (s *RunStore) hydrateRun(id string) {
+	s.mu.RLock()
+	entry := s.runs[id]
+	if entry == nil || (!entry.statsIncomplete && !entry.durationIncomplete) {
+		s.mu.RUnlock()
+		return
+	}
+	abs := entry.abs
+	s.mu.RUnlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	fi, err := os.Stat(abs)
+	if err != nil {
+		return
+	}
+
+	robot, err := robodiff.ParseRobotXMLFileContext(ctx, abs)
+	if err != nil {
+		return
+	}
+
+	pass, fail, total := robodiff.CountTests(&robot.Suite)
+	start, okStart := parseRobotTimestamp(robot.Suite.Status.StartTime)
+	end, okEnd := parseRobotTimestamp(robot.Suite.Status.EndTime)
+	var durationMs int64
+	if okStart && okEnd && !start.IsZero() && !end.IsZero() && end.After(start) {
+		durationMs = end.Sub(start).Milliseconds()
+	}
+
+	s.mu.Lock()
+	entry = s.runs[id]
+	if entry == nil {
+		s.mu.Unlock()
+		return
+	}
+	entry.robot = robot
+	entry.robotModTime = fi.ModTime()
+	entry.robotSize = fi.Size()
+	if entry.statsIncomplete {
+		entry.info.PassCount = pass
+		entry.info.FailCount = fail
+		entry.info.TestCount = total
+		entry.statsIncomplete = false
+	}
+	if entry.durationIncomplete {
+		entry.info.DurationMs = durationMs
+		entry.durationIncomplete = false
+	}
+	s.mu.Unlock()
 }
 
 func (s *RunStore) scanOnce() {
@@ -211,26 +331,13 @@ func (s *RunStore) scanOnce() {
 
 			runSize := runFolderSize(filepath.Dir(abs))
 
-			pass, fail, total, okStats, err := readRobotStatistics(abs)
+			pass, fail, total, okStats, err := readRobotStatisticsFast(abs)
 			if err != nil {
 				continue
 			}
-			if !okStats {
-				robot, err := robotdiff.ParseRobotXMLFile(abs)
-				if err != nil {
-					continue
-				}
-				pass, fail, total = robotdiff.CountTests(&robot.Suite)
-			}
-
-			startTime, endTime, okTimes, err := readRobotMessageTimes(abs)
-			if err != nil {
-				okTimes = false
-			}
+			statsIncomplete := !okStats
 			var durationMs int64
-			if okTimes && !startTime.IsZero() && !endTime.IsZero() && endTime.After(startTime) {
-				durationMs = endTime.Sub(startTime).Milliseconds()
-			}
+			durationIncomplete := true
 
 			updated[id] = &runEntry{
 				abs: abs,
@@ -245,6 +352,8 @@ func (s *RunStore) scanOnce() {
 					PassCount:  pass,
 					FailCount:  fail,
 				},
+				statsIncomplete:    statsIncomplete,
+				durationIncomplete: durationIncomplete,
 			}
 		}
 	}
@@ -254,6 +363,8 @@ func (s *RunStore) scanOnce() {
 	s.mu.Lock()
 	s.runs = updated
 	s.mu.Unlock()
+
+	s.startBackgroundFill()
 }
 
 func stableID(s string) string {
@@ -330,6 +441,37 @@ func readRobotStatistics(path string) (pass, fail, total int, ok bool, err error
 	}
 	defer f.Close()
 	return scanStatisticsStream(xml.NewDecoder(f))
+}
+
+func readRobotStatisticsFast(path string) (pass, fail, total int, ok bool, err error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, 0, 0, false, err
+	}
+	if info.Size() <= 0 {
+		return 0, 0, 0, false, nil
+	}
+
+	const maxTailBytes = 4 * 1024 * 1024
+	readSize := int64(maxTailBytes)
+	if info.Size() < readSize {
+		readSize = info.Size()
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, 0, 0, false, err
+	}
+	buf := make([]byte, readSize)
+	_, _ = f.ReadAt(buf, info.Size()-readSize)
+	_ = f.Close()
+
+	if idx := bytes.LastIndex(buf, []byte("<statistics")); idx != -1 {
+		pass, fail, total, ok, err = scanStatisticsBytes(buf[idx:])
+		if err == nil && ok {
+			return pass, fail, total, ok, nil
+		}
+	}
+	return 0, 0, 0, false, nil
 }
 
 func readRobotMessageTimes(path string) (start, end time.Time, ok bool, err error) {
@@ -464,7 +606,7 @@ func scanStatisticsStream(dec *xml.Decoder) (pass, fail, total int, ok bool, err
 	return 0, 0, 0, false, nil
 }
 
-func (s *RunStore) GetTestDetails(ctx context.Context, runID, testName string) (*robotdiff.Test, error) {
+func (s *RunStore) GetTestDetails(ctx context.Context, runID, testName string) (*robodiff.Test, error) {
 	s.mu.Lock()
 	entry, ok := s.runs[runID]
 	if !ok {
@@ -479,7 +621,7 @@ func (s *RunStore) GetTestDetails(ctx context.Context, runID, testName string) (
 	s.mu.Unlock()
 
 	// Search for the test in the cached robot data
-	var test *robotdiff.Test
+	var test *robodiff.Test
 	if strings.Contains(testName, ".") {
 		test = findTestInSuiteByFullName(&robot.Suite, testName, "")
 	}
@@ -503,13 +645,28 @@ func (s *RunStore) ensureRobotLoadedLocked(ctx context.Context, entry *runEntry)
 		return nil
 	}
 
-	robot, err := robotdiff.ParseRobotXMLFileContext(ctx, entry.abs)
+	robot, err := robodiff.ParseRobotXMLFileContext(ctx, entry.abs)
 	if err != nil {
 		return fmt.Errorf("parse run %s: %w", entry.abs, err)
 	}
 	entry.robot = robot
 	entry.robotModTime = fi.ModTime()
 	entry.robotSize = fi.Size()
+	if entry.statsIncomplete {
+		pass, fail, total := robodiff.CountTests(&robot.Suite)
+		entry.info.PassCount = pass
+		entry.info.FailCount = fail
+		entry.info.TestCount = total
+		entry.statsIncomplete = false
+	}
+	if entry.durationIncomplete {
+		start, okStart := parseRobotTimestamp(robot.Suite.Status.StartTime)
+		end, okEnd := parseRobotTimestamp(robot.Suite.Status.EndTime)
+		if okStart && okEnd && !start.IsZero() && !end.IsZero() && end.After(start) {
+			entry.info.DurationMs = end.Sub(start).Milliseconds()
+		}
+		entry.durationIncomplete = false
+	}
 	return nil
 }
 
@@ -737,7 +894,7 @@ func samePath(a, b string) bool {
 	return false
 }
 
-func findTestInSuite(suite *robotdiff.Suite, testName string) *robotdiff.Test {
+func findTestInSuite(suite *robodiff.Suite, testName string) *robodiff.Test {
 	// Check tests in current suite
 	for i := range suite.Tests {
 		if strings.EqualFold(suite.Tests[i].Name, testName) {
@@ -755,7 +912,7 @@ func findTestInSuite(suite *robotdiff.Suite, testName string) *robotdiff.Test {
 	return nil
 }
 
-func findTestInSuiteByFullName(suite *robotdiff.Suite, fullName, prefix string) *robotdiff.Test {
+func findTestInSuiteByFullName(suite *robodiff.Suite, fullName, prefix string) *robodiff.Test {
 	current := suite.Name
 	if prefix != "" {
 		current = prefix + "." + suite.Name
