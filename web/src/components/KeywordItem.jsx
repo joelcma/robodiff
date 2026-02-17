@@ -29,7 +29,7 @@ async function copyToClipboard(text) {
   document.body.removeChild(textarea);
 }
 
-export default function KeywordItem({ keyword, depth }) {
+export default function KeywordItem({ keyword, depth, runId }) {
   // Indentation should shrink slightly with depth to accommodate long chains
   const indent = Math.max(0, 15 - depth * 3);
   const hasChildren = keyword.keywords && keyword.keywords.length > 0;
@@ -247,7 +247,7 @@ export default function KeywordItem({ keyword, depth }) {
           {hasMessages && (
             <div className="keyword-messages">
               {keyword.messages.map((msg, i) => (
-                <MessageItem key={i} message={msg} />
+                <MessageItem key={i} message={msg} runId={runId} />
               ))}
             </div>
           )}
@@ -255,7 +255,12 @@ export default function KeywordItem({ keyword, depth }) {
           {hasChildren && (
             <div className="keyword-children">
               {keyword.keywords.map((child, i) => (
-                <KeywordItem key={i} keyword={child} depth={depth + 1} />
+                <KeywordItem
+                  key={i}
+                  keyword={child}
+                  depth={depth + 1}
+                  runId={runId}
+                />
               ))}
             </div>
           )}

@@ -43,7 +43,12 @@ export default function TestDetailsPanel({ testDetails, onClose }) {
             <h5>Keywords</h5>
             <div className="keywords-list">
               {testDetails.keywords.map((kw, i) => (
-                <KeywordItem key={i} keyword={kw} depth={0} />
+                <KeywordItem
+                  key={i}
+                  keyword={kw}
+                  depth={0}
+                  runId={testDetails.runId}
+                />
               ))}
             </div>
           </div>

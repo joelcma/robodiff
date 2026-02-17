@@ -1,4 +1,5 @@
 import { formatTime } from "../utils/timeFormatter";
+import { buildApiUrl } from "../utils/apiBase";
 import {
   splitTextByJsonAssignments,
   tryExtractJsonishComparison,
@@ -31,7 +32,33 @@ function isUrlKey(key) {
   return lower === "url" || lower === "path_url" || lower.endsWith("url");
 }
 
-export default function MessageItem({ message }) {
+function extractScreenshotPath(text) {
+  if (!text) return null;
+
+  const srcMatch = text.match(/src\s*=\s*"([^"]+)"/i);
+  if (srcMatch?.[1]) return srcMatch[1];
+  const hrefMatch = text.match(/href\s*=\s*"([^"]+)"/i);
+  if (hrefMatch?.[1]) return hrefMatch[1];
+
+  const idx = text.toLowerCase().lastIndexOf("screenshots");
+  if (idx !== -1) {
+    const raw = text.slice(idx).trim();
+    const cleaned = raw.replace(/^["']/, "").replace(/["']$/, "");
+    return cleaned.replace(/\\/g, "/");
+  }
+
+  return null;
+}
+
+function normalizeScreenshotPath(path) {
+  if (!path) return null;
+  const cleaned = path.replace(/\\/g, "/");
+  const idx = cleaned.toLowerCase().lastIndexOf("screenshots/");
+  if (idx === -1) return cleaned;
+  return cleaned.slice(idx);
+}
+
+export default function MessageItem({ message, runId }) {
   const comparison = tryExtractJsonishComparison(message.text);
   const isFailLevel =
     String(message.level || "").toLowerCase() === "fail" ||
@@ -48,6 +75,18 @@ export default function MessageItem({ message }) {
   const firstUrlCopyIndex = segments.findIndex(
     (s) => s?.type === "copy" && isUrlKey(s.key)
   );
+  const screenshotPath = message?.html
+    ? extractScreenshotPath(message.text)
+    : extractScreenshotPath(message.text);
+  const normalizedScreenshotPath = normalizeScreenshotPath(screenshotPath);
+  const screenshotUrl =
+    runId && normalizedScreenshotPath
+      ? buildApiUrl(
+          `/api/run-file?runId=${encodeURIComponent(
+            runId
+          )}&path=${encodeURIComponent(normalizedScreenshotPath)}`
+        )
+      : null;
 
   return (
     <div
@@ -221,6 +260,13 @@ export default function MessageItem({ message }) {
             return <span key={i}>{seg.value}</span>;
           })
         )}
+        {screenshotUrl ? (
+          <div className="screenshot-preview">
+            <a href={screenshotUrl} target="_blank" rel="noreferrer">
+              <img src={screenshotUrl} alt="Screenshot" />
+            </a>
+          </div>
+        ) : null}
       </div>
     </div>
   );

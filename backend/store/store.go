@@ -635,6 +635,17 @@ func (s *RunStore) GetTestDetails(ctx context.Context, runID, testName string) (
 	return nil, fmt.Errorf("test %q not found in run", testName)
 }
 
+func (s *RunStore) RunFilePath(runID string) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	entry := s.runs[runID]
+	if entry == nil {
+		return "", errRunNotFound
+	}
+	return entry.abs, nil
+}
+
 func (s *RunStore) ensureRobotLoadedLocked(ctx context.Context, entry *runEntry) error {
 	fi, err := os.Stat(entry.abs)
 	if err != nil {

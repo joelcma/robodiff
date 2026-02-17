@@ -144,7 +144,12 @@ export default function TestComparisonModal({
                           <h5>Keywords</h5>
                           <div className="keywords-list">
                             {detail.data.keywords.map((kw, i) => (
-                              <KeywordItem key={i} keyword={kw} depth={0} />
+                              <KeywordItem
+                                key={i}
+                                keyword={kw}
+                                depth={0}
+                                runId={runId}
+                              />
                             ))}
                           </div>
                         </div>

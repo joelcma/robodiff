@@ -128,6 +128,7 @@ type Return struct {
 type Message struct {
 	Level     string `xml:"level,attr"`
 	Timestamp string `xml:"timestamp,attr"`
+	HTML      bool   `xml:"html,attr"`
 	Text      string `xml:",chardata"`
 }
 

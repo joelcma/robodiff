@@ -938,6 +938,22 @@ html[data-theme="light"] .runlist-table-wrapper::after {
   font-family: "Courier New", monospace;
 }
 
+.screenshot-preview {
+  margin-top: 12px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  max-width: 100%;
+}
+
+.screenshot-preview img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+
 .http-response-error {
   margin: 0 0 16px 0;
   padding: 12px;

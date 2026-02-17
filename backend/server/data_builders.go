@@ -164,6 +164,7 @@ func buildMessagesData(messages []rdiff.Message) []map[string]any {
 		result[i] = map[string]any{
 			"level":     msg.Level,
 			"timestamp": msg.Timestamp,
+			"html":      msg.HTML,
 			"text":      msg.Text,
 		}
 	}

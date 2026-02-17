@@ -2,8 +2,6 @@ export default function Header({
   dir,
   runCount,
   selectedCount,
-  loadingRuns,
-  onRefresh,
   onShowHelp,
   showRunList,
   onToggleRunList,
@@ -59,13 +57,6 @@ export default function Header({
               title={showRunList ? "Hide run list" : "Show run list"}
             >
               {showRunList ? "▼" : "▶"}
-            </button>
-            <button
-              onClick={onRefresh}
-              disabled={loadingRuns}
-              title="Refresh (R)"
-            >
-              {loadingRuns ? "⟳ Refreshing…" : "⟳ Refresh"}
             </button>
           </div>
         </div>

@@ -10,6 +10,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/rename-run", s.handleRenameRun)
 	mux.HandleFunc("/api/run", s.handleRun)
 	mux.HandleFunc("/api/test-details", s.handleTestDetails)
+	mux.HandleFunc("/api/run-file", s.handleRunFile)
 	mux.HandleFunc("/api/http-try", s.handleHTTPTry)
 	mux.HandleFunc("/api/diff", s.handleDiff)
 }

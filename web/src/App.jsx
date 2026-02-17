@@ -458,8 +458,6 @@ function App() {
         dir={dir}
         runCount={runs.length}
         selectedCount={selectedIds.length}
-        loadingRuns={loadingRuns}
-        onRefresh={refreshRuns}
         onShowHelp={() => setShowHelp(true)}
         showRunList={showRunList}
         onToggleRunList={() => setShowRunList(!showRunList)}

@@ -78,6 +78,7 @@ func (s *Server) handleTestDetails(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]any{
+		"runId":  req.RunID,
 		"name":     test.Name,
 		"status":   test.Status.Status,
 		"start":    test.Status.StartTime,
