@@ -175,19 +175,21 @@ export default function KeywordItem({ keyword, depth, runId }) {
           {effectiveStatusLabel}
         </span>
         <span className="keyword-type">{keyword.type}</span>
-        <span className="keyword-name">
-          {keyword.name}
-          {apiRequestCount > 0 ? (
-            <span className="api-pill">
-              {apiRequestCount === 1 ? "API" : `API (${apiRequestCount})`}
-            </span>
-          ) : null}
-        </span>
-        {keyword.start && (
-          <span className="keyword-time">
-            {formatTime(keyword.start)} → {formatTime(keyword.end)}
+        <span className="keyword-header-main">
+          <span className="keyword-name">
+            {keyword.name}
+            {apiRequestCount > 0 ? (
+              <span className="api-pill">
+                {apiRequestCount === 1 ? "API" : `API (${apiRequestCount})`}
+              </span>
+            ) : null}
           </span>
-        )}
+          {keyword.start && (
+            <span className="keyword-time">
+              {formatTime(keyword.start)} → {formatTime(keyword.end)}
+            </span>
+          )}
+        </span>
         {curlInfo?.curl ? (
           <span className="keyword-header-actions">
             <button

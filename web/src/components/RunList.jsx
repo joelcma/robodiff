@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+
 function formatTime(isoOrDate) {
   const d = new Date(isoOrDate);
   if (Number.isNaN(d.getTime())) return "";
@@ -51,6 +53,8 @@ export default function RunList({
   deletingRuns,
   renamingRunId,
   loadingDiff,
+  loadingRunView,
+  onOpenTimeBreakdown,
   loadingRuns,
   sortBy,
   sortDir,
@@ -58,6 +62,24 @@ export default function RunList({
 }) {
   const selectedIds = Array.from(selected);
   const totalSize = runs.reduce((sum, run) => sum + (run.size || 0), 0);
+  const [editingRunId, setEditingRunId] = useState("");
+  const [editingName, setEditingName] = useState("");
+  const renameInputRef = useRef(null);
+
+  useEffect(() => {
+    if (!editingRunId) return;
+    const stillExists = runs.some((r) => r.id === editingRunId);
+    if (!stillExists) {
+      setEditingRunId("");
+      setEditingName("");
+    }
+  }, [editingRunId, runs]);
+
+  useEffect(() => {
+    if (!editingRunId || !renameInputRef.current) return;
+    renameInputRef.current.focus();
+    renameInputRef.current.select();
+  }, [editingRunId]);
 
   function confirmDelete() {
     if (!onDeleteSelected) return;
@@ -78,15 +100,29 @@ export default function RunList({
     onDeleteSelected(selectedIds);
   }
 
-  function promptRename(run) {
+  function startInlineRename(run) {
     if (!onRenameRun || !run?.id) return;
     const current = String(run.name || "").trim();
     const suggested = current || String(run.relPath || "").trim();
-    const input = window.prompt("Rename run", suggested);
-    if (input === null) return;
-    const next = input.trim();
-    if (!next || next === current) return;
+    setEditingRunId(run.id);
+    setEditingName(suggested);
+  }
+
+  function cancelInlineRename() {
+    setEditingRunId("");
+    setEditingName("");
+  }
+
+  function submitInlineRename(run) {
+    if (!run?.id || !onRenameRun) return;
+    const current = String(run.name || "").trim();
+    const next = editingName.trim();
+    if (!next || next === current) {
+      cancelInlineRename();
+      return;
+    }
     onRenameRun(run.id, next);
+    cancelInlineRename();
   }
 
   return (
@@ -141,19 +177,29 @@ export default function RunList({
             <button
               className="primary"
               onClick={onGenerate}
-              disabled={selectedIds.length < 1 || loadingDiff}
+              disabled={selectedIds.length < 1 || loadingDiff || loadingRunView}
               title={
                 selectedIds.length === 1
                   ? "View run (Ctrl+D)"
                   : "Generate diff (Ctrl+D)"
               }
             >
-              {loadingDiff
+              {loadingDiff || loadingRunView
                 ? "⟳ Loading…"
                 : selectedIds.length === 1
                   ? `👁️ View Run`
                   : `⚡ Compare (${selectedIds.length})`}
             </button>
+            {selectedIds.length === 1 && onOpenTimeBreakdown ? (
+              <button
+                className="secondary"
+                onClick={() => onOpenTimeBreakdown(selectedIds[0])}
+                disabled={loadingDiff || loadingRunView}
+                title="Open time breakdown for the selected run"
+              >
+                ⏱ Time Breakdown
+              </button>
+            ) : null}
           </div>
         </div>
       </div>
@@ -299,6 +345,7 @@ export default function RunList({
               {runs.map((run) => {
                 const isSelected = selected.has(run.id);
                 const isPinned = pinned?.has(run.id);
+                const isEditingName = editingRunId === run.id;
                 const passRate =
                   run.testCount > 0
                     ? Math.round((run.passCount / run.testCount) * 100)
@@ -336,20 +383,73 @@ export default function RunList({
                     </td>
                     <td className="name-cell">
                       <div className="name-cell-content">
-                        <span>{run.name}</span>
-                        <button
-                          type="button"
-                          className="rename-btn"
-                          title="Rename run"
-                          disabled={renamingRunId === run.id}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            promptRename(run);
-                          }}
-                        >
-                          {renamingRunId === run.id ? "…" : "✎"}
-                        </button>
+                        {isEditingName ? (
+                          <>
+                            <input
+                              ref={renameInputRef}
+                              type="text"
+                              className="rename-input"
+                              value={editingName}
+                              onChange={(e) => setEditingName(e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  submitInlineRename(run);
+                                } else if (e.key === "Escape") {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  cancelInlineRename();
+                                }
+                              }}
+                              disabled={renamingRunId === run.id}
+                            />
+                            <button
+                              type="button"
+                              className="rename-btn"
+                              title="Save name"
+                              disabled={renamingRunId === run.id}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                submitInlineRename(run);
+                              }}
+                            >
+                              {renamingRunId === run.id ? "…" : "✓"}
+                            </button>
+                            <button
+                              type="button"
+                              className="rename-btn"
+                              title="Cancel rename"
+                              disabled={renamingRunId === run.id}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                cancelInlineRename();
+                              }}
+                            >
+                              ✕
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span>{run.name}</span>
+                            <button
+                              type="button"
+                              className="rename-btn"
+                              title="Rename run"
+                              disabled={renamingRunId === run.id}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                startInlineRename(run);
+                              }}
+                            >
+                              {renamingRunId === run.id ? "…" : "✎"}
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                     <td className="time-cell">{formatTime(run.modTime)}</td>

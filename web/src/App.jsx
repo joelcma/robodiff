@@ -28,6 +28,7 @@ function App() {
   const [singleRun, setSingleRun] = useState(null);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [loadingDiff, setLoadingDiff] = useState(false);
+  const [loadingRunView, setLoadingRunView] = useState(false);
   const [deletingRuns, setDeletingRuns] = useState(false);
   const [renamingRunId, setRenamingRunId] = useState("");
   const [error, setError] = useState(null);
@@ -41,6 +42,7 @@ function App() {
   const [selectingDir, setSelectingDir] = useState(false);
   const [manualDir, setManualDir] = useState("");
   const [showDirModal, setShowDirModal] = useState(false);
+  const [singleRunMode, setSingleRunMode] = useState("tests");
   const [pinned, setPinned] = useState(() => {
     try {
       const raw = localStorage.getItem("robodiff-pins");
@@ -120,7 +122,6 @@ function App() {
 
   async function refreshRuns() {
     setLoadingRuns(true);
-    setError(null);
     try {
       const res = await fetch(buildApiUrl("/api/runs"));
       const data = await res.json().catch(() => ({}));
@@ -134,6 +135,9 @@ function App() {
       }
       setRuns(Array.isArray(data.runs) ? data.runs : []);
       setDir(data.dir || "");
+      setError((prev) =>
+        prev?.code === "RUNS_LOAD_FAILED" ? null : prev,
+      );
     } catch (e) {
       setError({
         code: "RUNS_LOAD_FAILED",
@@ -198,6 +202,42 @@ function App() {
     setShowDirModal(true);
   }
 
+  async function loadSingleRun(runId, mode = "tests") {
+    if (!runId) return;
+    setLoadingRunView(true);
+    setError(null);
+    setDiff(null);
+    setSingleRun(null);
+
+    try {
+      const res = await fetch(buildApiUrl("/api/run"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError({
+          code: data?.code || "VIEW_FAILED",
+          message: data?.error || `View run failed (${res.status})`,
+          detail: data?.detail || "",
+        });
+        return;
+      }
+      setSingleRun({ ...data, runId });
+      setSingleRunMode(mode);
+      setShowRunList(false);
+    } catch (e) {
+      setError({
+        code: "VIEW_FAILED",
+        message: e?.message || String(e),
+        detail: "",
+      });
+    } finally {
+      setLoadingRunView(false);
+    }
+  }
+
   async function generateDiff(idsOrEvent) {
     const ids = Array.isArray(idsOrEvent) ? idsOrEvent : selectedIds;
     if (!ids || ids.length < 1) return;
@@ -208,32 +248,8 @@ function App() {
 
     // If only 1 run selected, view that run
     if (ids.length === 1) {
-      try {
-        const res = await fetch(buildApiUrl("/api/run"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ runId: ids[0] }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          setError({
-            code: data?.code || "VIEW_FAILED",
-            message: data?.error || `View run failed (${res.status})`,
-            detail: data?.detail || "",
-          });
-          return;
-        }
-        setSingleRun({ ...data, runId: ids[0] });
-        setShowRunList(false);
-      } catch (e) {
-        setError({
-          code: "VIEW_FAILED",
-          message: e?.message || String(e),
-          detail: "",
-        });
-      } finally {
-        setLoadingDiff(false);
-      }
+      await loadSingleRun(ids[0], "tests");
+      setLoadingDiff(false);
       return;
     }
 
@@ -264,6 +280,10 @@ function App() {
     } finally {
       setLoadingDiff(false);
     }
+  }
+
+  async function openTimeBreakdown(runId) {
+    await loadSingleRun(runId, "time");
   }
 
   async function deleteSelectedRuns(ids) {
@@ -500,6 +520,8 @@ function App() {
           deletingRuns={deletingRuns}
           renamingRunId={renamingRunId}
           loadingDiff={loadingDiff}
+          loadingRunView={loadingRunView}
+          onOpenTimeBreakdown={openTimeBreakdown}
           loadingRuns={loadingRuns}
           sortBy={sortBy}
           sortDir={sortDir}
@@ -518,6 +540,8 @@ function App() {
           onFilterChange={setDiffFilter}
           collapsedSuites={collapsedSuites}
           onToggleSuite={toggleSuite}
+          mode={singleRunMode}
+          onChangeMode={setSingleRunMode}
         />
       )}
 

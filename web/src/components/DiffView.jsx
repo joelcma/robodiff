@@ -52,12 +52,52 @@ export default function DiffView({
   runIds,
 }) {
   const [comparisonTest, setComparisonTest] = useState(null);
+  const [copyStatus, setCopyStatus] = useState("");
+
+  const handleCopyDifferingTests = async () => {
+    const suites = Array.isArray(diff?.suites) ? diff.suites : [];
+    const lines = suites.flatMap((suite) =>
+      (suite.tests || [])
+        .filter((test) => {
+          const results = test.results || [];
+          return results.length >= 2 && results[0] !== results[1];
+        })
+        .map((test) => {
+          const results = test.results || [];
+          return `${test.name} [${results[0]} -> ${results[1]}]`;
+        }),
+    );
+
+    if (lines.length === 0) {
+      setCopyStatus("No differing tests");
+      window.setTimeout(() => setCopyStatus(""), 2000);
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      setCopyStatus(`Copied ${lines.length} differing tests`);
+    } catch {
+      setCopyStatus("Clipboard failed");
+    }
+    window.setTimeout(() => setCopyStatus(""), 2000);
+  };
 
   return (
     <section className="panel p-1">
       <div className="panel-header">
         <h2>Comparison Results</h2>
         <div className="filter-buttons">
+          {Array.isArray(diff?.columns) && diff.columns.length === 2 ? (
+            <>
+              <button onClick={handleCopyDifferingTests}>
+                Copy Differing Tests
+              </button>
+              {copyStatus ? (
+                <span className="suite-count muted">{copyStatus}</span>
+              ) : null}
+            </>
+          ) : null}
           <button
             className={diffFilter === "all" ? "active" : ""}
             onClick={() => onFilterChange("all")}

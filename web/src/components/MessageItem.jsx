@@ -73,7 +73,7 @@ export default function MessageItem({ message, runId }) {
   const curlInfo = buildCurlFromText(message.text);
   const curl = curlInfo?.curl;
   const firstUrlCopyIndex = segments.findIndex(
-    (s) => s?.type === "copy" && isUrlKey(s.key)
+    (s) => s?.type === "copy" && isUrlKey(s.key),
   );
   const screenshotPath = message?.html
     ? extractScreenshotPath(message.text)
@@ -83,8 +83,8 @@ export default function MessageItem({ message, runId }) {
     runId && normalizedScreenshotPath
       ? buildApiUrl(
           `/api/run-file?runId=${encodeURIComponent(
-            runId
-          )}&path=${encodeURIComponent(normalizedScreenshotPath)}`
+            runId,
+          )}&path=${encodeURIComponent(normalizedScreenshotPath)}`,
         )
       : null;
 

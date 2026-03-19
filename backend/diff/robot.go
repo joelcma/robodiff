@@ -136,6 +136,7 @@ type Status struct {
 	Status    string `xml:"status,attr"`
 	StartTime string `xml:"starttime,attr"`
 	EndTime   string `xml:"endtime,attr"`
+	Elapsed   string `xml:"elapsed,attr"`
 	Message   string `xml:",chardata"`
 }
 
@@ -432,8 +433,7 @@ func (s *Status) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 		case "endtime", "end":
 			s.EndTime = a.Value
 		case "elapsed":
-			// Ignore for now. Some Robot versions provide elapsed instead of end.
-			// We keep StartTime and Status which are sufficient for the UI.
+			s.Elapsed = a.Value
 		}
 	}
 

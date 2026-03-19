@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import Sidebar from "./Sidebar";
 import TestDetailsPanel from "./TestDetailsPanel";
+import TimeBreakdown from "./TimeBreakdown";
 import { buildApiUrl } from "../utils/apiBase";
 
 export default function SingleRunView({
@@ -10,12 +11,15 @@ export default function SingleRunView({
   onFilterChange,
   collapsedSuites,
   onToggleSuite,
+  mode,
+  onChangeMode,
 }) {
   const [testDetails, setTestDetails] = useState(null);
   const [loadingTest, setLoadingTest] = useState(null);
   const [activeSuite, setActiveSuite] = useState(null);
   const [activeTestName, setActiveTestName] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [copyStatus, setCopyStatus] = useState("");
   const mainContentRef = useRef(null);
   const mainScrollTopRef = useRef(0);
 
@@ -65,13 +69,37 @@ export default function SingleRunView({
     }
   };
 
+  const handleCopyFailedTests = async () => {
+    const failedTests = (singleRun?.suites || []).flatMap((suite) =>
+      (suite.tests || [])
+        .filter((test) => String(test.status || "").toUpperCase() === "FAIL")
+        .map((test) => `${suite.name}.${test.name}`),
+    );
+
+    if (failedTests.length === 0) {
+      setCopyStatus("No failed tests");
+      window.setTimeout(() => setCopyStatus(""), 2000);
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(failedTests.join("\n"));
+      setCopyStatus(`Copied ${failedTests.length} failed tests`);
+    } catch {
+      setCopyStatus("Clipboard failed");
+    }
+    window.setTimeout(() => setCopyStatus(""), 2000);
+  };
+
   return (
     <section
-      className={`panel with-sidebar ${
-        testDetails ? "with-details-panel" : ""
+      className={`panel ${mode === "tests" ? "with-sidebar" : ""} ${
+        mode === "tests" && testDetails ? "with-details-panel" : ""
       }`}
     >
-      <Sidebar suites={singleRun.suites} activeSuite={activeSuite} />
+      {mode === "tests" ? (
+        <Sidebar suites={singleRun.suites} activeSuite={activeSuite} />
+      ) : null}
 
       <div
         className="main-content"
@@ -83,37 +111,63 @@ export default function SingleRunView({
         }}
       >
         <div className="panel-header-outer">
-          <div class="panel-header">
+          <div className="panel-header">
             <h2>{singleRun.title}</h2>
             <div className="diff-meta">
               <div className="filter-buttons">
                 <button
-                  className={diffFilter === "all" ? "active" : ""}
-                  onClick={() => onFilterChange("all")}
+                  className={mode === "tests" ? "active" : ""}
+                  onClick={() => onChangeMode("tests")}
                 >
-                  All Tests
+                  Tests
                 </button>
                 <button
-                  className={diffFilter === "pass" ? "active" : ""}
-                  onClick={() => onFilterChange("pass")}
+                  className={mode === "time" ? "active" : ""}
+                  onClick={() => onChangeMode("time")}
                 >
-                  Passed Only
-                </button>
-                <button
-                  className={diffFilter === "failures" ? "active" : ""}
-                  onClick={() => onFilterChange("failures")}
-                >
-                  Failed Only
+                  Time Breakdown
                 </button>
               </div>
-              <div className="search-box">
-                <input
-                  type="search"
-                  placeholder="Search tests..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
+              {mode === "tests" ? (
+                <>
+                  <div className="filter-buttons">
+                    <button onClick={handleCopyFailedTests}>
+                      Copy Failed Tests
+                    </button>
+                    {copyStatus ? (
+                      <span className="suite-count muted">{copyStatus}</span>
+                    ) : null}
+                  </div>
+                  <div className="filter-buttons">
+                    <button
+                      className={diffFilter === "all" ? "active" : ""}
+                      onClick={() => onFilterChange("all")}
+                    >
+                      All Tests
+                    </button>
+                    <button
+                      className={diffFilter === "pass" ? "active" : ""}
+                      onClick={() => onFilterChange("pass")}
+                    >
+                      Passed Only
+                    </button>
+                    <button
+                      className={diffFilter === "failures" ? "active" : ""}
+                      onClick={() => onFilterChange("failures")}
+                    >
+                      Failed Only
+                    </button>
+                  </div>
+                  <div className="search-box">
+                    <input
+                      type="search"
+                      placeholder="Search tests..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                  </div>
+                </>
+              ) : null}
             </div>
             <button className="close-btn" onClick={onClose} title="Close (Esc)">
               ✕
@@ -121,7 +175,15 @@ export default function SingleRunView({
           </div>
         </div>
 
-        {singleRun.suites?.map((suite) => {
+        {mode === "time" ? (
+          <TimeBreakdown
+            breakdown={singleRun.timeBreakdown}
+            summary={singleRun.timeSummary}
+          />
+        ) : null}
+
+        {mode === "tests"
+          ? singleRun.suites?.map((suite) => {
           const isCollapsed = collapsedSuites.has(suite.name);
           const searchTerms = searchQuery
             .trim()
@@ -199,19 +261,22 @@ export default function SingleRunView({
               )}
             </div>
           );
-        })}
+        })
+          : null}
       </div>
 
-      <TestDetailsPanel
-        testDetails={testDetails}
-        onClose={() => {
-          if (mainContentRef.current) {
-            mainScrollTopRef.current = mainContentRef.current.scrollTop;
-          }
-          setTestDetails(null);
-          setActiveSuite(null);
-        }}
-      />
+      {mode === "tests" ? (
+        <TestDetailsPanel
+          testDetails={testDetails}
+          onClose={() => {
+            if (mainContentRef.current) {
+              mainScrollTopRef.current = mainContentRef.current.scrollTop;
+            }
+            setTestDetails(null);
+            setActiveSuite(null);
+          }}
+        />
+      ) : null}
     </section>
   );
 }

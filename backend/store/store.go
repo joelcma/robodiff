@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"encoding/hex"
 	"encoding/xml"
 	"errors"
@@ -16,12 +17,17 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	robodiff "robot_diff/backend/diff"
 )
 
 var errRunNotFound = errors.New("run not found")
+
+const hotFileCooldown = 5 * time.Second
+
+const runCacheVersion = 1
 
 type Config struct {
 	Dir      string
@@ -48,11 +54,13 @@ type runEntry struct {
 	robotSize    int64
 	statsIncomplete    bool
 	durationIncomplete bool
+	hotUntil     time.Time
 }
 
 type RunStore struct {
 	dir      string
 	interval time.Duration
+	cachePath string
 
 	mu   sync.RWMutex
 	runs map[string]*runEntry
@@ -61,12 +69,34 @@ type RunStore struct {
 	fillInProgress bool
 }
 
+type runCacheSnapshot struct {
+	Version int             `json:"version"`
+	Dir     string          `json:"dir"`
+	SavedAt time.Time       `json:"savedAt"`
+	Entries []runCacheEntry `json:"entries"`
+}
+
+type runCacheEntry struct {
+	ID                 string    `json:"id"`
+	Abs                string    `json:"abs"`
+	Info               RunInfo   `json:"info"`
+	RobotModTime       time.Time `json:"robotModTime"`
+	RobotSize          int64     `json:"robotSize"`
+	StatsIncomplete    bool      `json:"statsIncomplete"`
+	DurationIncomplete bool      `json:"durationIncomplete"`
+}
+
 func NewRunStore(dir string, interval time.Duration) *RunStore {
-	return &RunStore{
+	rs := &RunStore{
 		dir:      dir,
 		interval: interval,
 		runs:     make(map[string]*runEntry, 128),
 	}
+	if cachePath, err := cachePathForDir(dir); err == nil {
+		rs.cachePath = cachePath
+	}
+	rs.loadCache()
+	return rs
 }
 
 func (s *RunStore) Config() Config {
@@ -174,16 +204,21 @@ func (s *RunStore) startBackgroundFill() {
 		}
 		close(jobs)
 		wg.Wait()
+		s.persistCacheFromStore()
 	}()
 }
 
 func (s *RunStore) collectIncompleteIDs() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	now := time.Now()
 
 	ids := make([]string, 0, len(s.runs))
 	for id, entry := range s.runs {
 		if entry == nil {
+			continue
+		}
+		if entry.hotUntil.After(now) {
 			continue
 		}
 		if entry.statsIncomplete || entry.durationIncomplete {
@@ -203,24 +238,22 @@ func (s *RunStore) hydrateRun(id string) {
 	abs := entry.abs
 	s.mu.RUnlock()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
 	fi, err := os.Stat(abs)
 	if err != nil {
 		return
 	}
 
-	robot, err := robodiff.ParseRobotXMLFileContext(ctx, abs)
+	pass, fail, total, okStats, err := readRobotStatistics(abs)
 	if err != nil {
 		return
 	}
 
-	pass, fail, total := robodiff.CountTests(&robot.Suite)
-	start, okStart := parseRobotTimestamp(robot.Suite.Status.StartTime)
-	end, okEnd := parseRobotTimestamp(robot.Suite.Status.EndTime)
+	start, end, okTimes, err := readRobotMessageTimes(abs)
+	if err != nil {
+		return
+	}
 	var durationMs int64
-	if okStart && okEnd && !start.IsZero() && !end.IsZero() && end.After(start) {
+	if okTimes && !start.IsZero() && !end.IsZero() && end.After(start) {
 		durationMs = end.Sub(start).Milliseconds()
 	}
 
@@ -230,16 +263,15 @@ func (s *RunStore) hydrateRun(id string) {
 		s.mu.Unlock()
 		return
 	}
-	entry.robot = robot
 	entry.robotModTime = fi.ModTime()
 	entry.robotSize = fi.Size()
-	if entry.statsIncomplete {
+	if entry.statsIncomplete && okStats {
 		entry.info.PassCount = pass
 		entry.info.FailCount = fail
 		entry.info.TestCount = total
 		entry.statsIncomplete = false
 	}
-	if entry.durationIncomplete {
+	if entry.durationIncomplete && okTimes {
 		entry.info.DurationMs = durationMs
 		entry.durationIncomplete = false
 	}
@@ -249,6 +281,8 @@ func (s *RunStore) hydrateRun(id string) {
 func (s *RunStore) scanOnce() {
 	// Build a fresh map each scan so deleted runs disappear.
 	updated := make(map[string]*runEntry, 128)
+	now := time.Now()
+	changed := false
 
 	s.mu.RLock()
 	prev := make(map[string]*runEntry, len(s.runs))
@@ -321,15 +355,52 @@ func (s *RunStore) scanOnce() {
 				runName = strings.TrimSuffix(name, filepath.Ext(name))
 			}
 
+			runSize := runFolderSize(filepath.Dir(abs))
+			isHot := now.Sub(fi.ModTime()) < hotFileCooldown
+
 			if existing, ok := prev[id]; ok && existing != nil {
-				runSize := runFolderSize(filepath.Dir(abs))
 				if existing.info.ModTime.Equal(fi.ModTime()) && existing.info.Size == runSize {
 					updated[id] = existing
 					continue
 				}
+				changed = true
+				if isHot {
+					clone := *existing
+					clone.abs = abs
+					clone.info.ID = id
+					clone.info.Name = runName
+					clone.info.RelPath = filepath.ToSlash(rel)
+					clone.info.ModTime = fi.ModTime()
+					clone.info.Size = runSize
+					clone.statsIncomplete = true
+					clone.durationIncomplete = true
+					clone.hotUntil = now.Add(hotFileCooldown)
+					updated[id] = &clone
+					continue
+				}
 			}
+			changed = true
 
-			runSize := runFolderSize(filepath.Dir(abs))
+			if isHot {
+				updated[id] = &runEntry{
+					abs: abs,
+					info: RunInfo{
+						ID:         id,
+						Name:       runName,
+						RelPath:    filepath.ToSlash(rel),
+						ModTime:    fi.ModTime(),
+						Size:       runSize,
+						DurationMs: 0,
+						TestCount:  0,
+						PassCount:  0,
+						FailCount:  0,
+					},
+					statsIncomplete:    true,
+					durationIncomplete: true,
+					hotUntil:            now.Add(hotFileCooldown),
+				}
+				continue
+			}
 
 			pass, fail, total, okStats, err := readRobotStatisticsFast(abs)
 			if err != nil {
@@ -359,12 +430,140 @@ func (s *RunStore) scanOnce() {
 	}
 
 	scanDir(s.dir, 0)
+	if len(updated) != len(prev) {
+		changed = true
+	}
 
 	s.mu.Lock()
 	s.runs = updated
 	s.mu.Unlock()
+	if changed {
+		s.persistCacheFromStore()
+	}
 
 	s.startBackgroundFill()
+}
+
+func (s *RunStore) loadCache() {
+	if s.cachePath == "" {
+		return
+	}
+
+	data, err := os.ReadFile(s.cachePath)
+	if err != nil {
+		return
+	}
+
+	var snap runCacheSnapshot
+	if err := json.Unmarshal(data, &snap); err != nil {
+		return
+	}
+	if snap.Version != runCacheVersion {
+		return
+	}
+
+	loaded := make(map[string]*runEntry, len(snap.Entries))
+	for _, item := range snap.Entries {
+		id := strings.TrimSpace(item.ID)
+		abs := strings.TrimSpace(item.Abs)
+		if id == "" || abs == "" {
+			continue
+		}
+		if stableID(abs) != id {
+			continue
+		}
+		entry := &runEntry{
+			info:               item.Info,
+			abs:                abs,
+			robotModTime:       item.RobotModTime,
+			robotSize:          item.RobotSize,
+			statsIncomplete:    item.StatsIncomplete,
+			durationIncomplete: item.DurationIncomplete,
+		}
+		entry.info.ID = id
+		loaded[id] = entry
+	}
+
+	if len(loaded) == 0 {
+		return
+	}
+
+	s.mu.Lock()
+	s.runs = loaded
+	s.mu.Unlock()
+}
+
+func (s *RunStore) persistCacheFromStore() {
+	if s.cachePath == "" {
+		return
+	}
+
+	s.mu.RLock()
+	entries := make([]runCacheEntry, 0, len(s.runs))
+	for id, e := range s.runs {
+		if e == nil || strings.TrimSpace(e.abs) == "" {
+			continue
+		}
+		entries = append(entries, runCacheEntry{
+			ID:                 id,
+			Abs:                e.abs,
+			Info:               e.info,
+			RobotModTime:       e.robotModTime,
+			RobotSize:          e.robotSize,
+			StatsIncomplete:    e.statsIncomplete,
+			DurationIncomplete: e.durationIncomplete,
+		})
+	}
+	s.mu.RUnlock()
+
+	s.persistCacheEntries(entries)
+}
+
+func (s *RunStore) persistCacheEntries(entries []runCacheEntry) {
+	if s.cachePath == "" {
+		return
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].ID < entries[j].ID
+	})
+
+	snap := runCacheSnapshot{
+		Version: runCacheVersion,
+		Dir:     s.dir,
+		SavedAt: time.Now(),
+		Entries: entries,
+	}
+
+	data, err := json.Marshal(snap)
+	if err != nil {
+		return
+	}
+
+	if err := os.MkdirAll(filepath.Dir(s.cachePath), 0o755); err != nil {
+		return
+	}
+
+	tempPath := s.cachePath + ".tmp"
+	if err := os.WriteFile(tempPath, data, 0o644); err != nil {
+		return
+	}
+	if err := os.Rename(tempPath, s.cachePath); err != nil {
+		_ = os.Remove(tempPath)
+	}
+}
+
+func cachePathForDir(dir string) (string, error) {
+	absDir, err := filepath.Abs(strings.TrimSpace(dir))
+	if err != nil {
+		return "", err
+	}
+	cacheRoot, err := os.UserCacheDir()
+	if err != nil || strings.TrimSpace(cacheRoot) == "" {
+		cacheRoot = os.TempDir()
+	}
+	hash := stableID(absDir)
+	return filepath.Join(cacheRoot, "robodiff", "run-cache", hash+".json"), nil
 }
 
 func stableID(s string) string {
@@ -794,7 +993,10 @@ func (s *RunStore) RenameRun(id, newName string) error {
 		// If XML is in the root, rename the XML file itself.
 		targetFile := filepath.Join(rootReal, normalized+".xml")
 		if samePath(fileReal, targetFile) {
-			return nil
+			if exactSamePath(fileReal, targetFile) {
+				return nil
+			}
+			return renameCaseOnlyWithRetry(fileReal, targetFile)
 		}
 		if !isSubpath(rootReal, targetFile) {
 			return fmt.Errorf("refusing to rename outside runs root: %s", targetFile)
@@ -804,7 +1006,7 @@ func (s *RunStore) RenameRun(id, newName string) error {
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("check target run file: %w", err)
 		}
-		if err := os.Rename(fileReal, targetFile); err != nil {
+		if err := renameWithRetry(fileReal, targetFile); err != nil {
 			return fmt.Errorf("rename run file: %w", err)
 		}
 		return nil
@@ -814,7 +1016,10 @@ func (s *RunStore) RenameRun(id, newName string) error {
 	parentDir := filepath.Dir(dirReal)
 	targetDir := filepath.Join(parentDir, normalized)
 	if samePath(dirReal, targetDir) {
-		return nil
+		if exactSamePath(dirReal, targetDir) {
+			return nil
+		}
+		return renameCaseOnlyWithRetry(dirReal, targetDir)
 	}
 	if !isSubpath(rootReal, parentDir) || !isSubpath(rootReal, targetDir) {
 		return fmt.Errorf("refusing to rename outside runs root: %s", targetDir)
@@ -824,10 +1029,61 @@ func (s *RunStore) RenameRun(id, newName string) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("check target run folder: %w", err)
 	}
-	if err := os.Rename(dirReal, targetDir); err != nil {
+	if err := renameWithRetry(dirReal, targetDir); err != nil {
 		return fmt.Errorf("rename run folder: %w", err)
 	}
 	return nil
+}
+
+func renameWithRetry(from, to string) error {
+	const maxAttempts = 5
+	var lastErr error
+
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		err := os.Rename(from, to)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if !isRetryableRenameError(err) {
+			return err
+		}
+		time.Sleep(time.Duration(100*(attempt+1)) * time.Millisecond)
+	}
+
+	if lastErr != nil {
+		return lastErr
+	}
+	return errors.New("rename failed")
+}
+
+func renameCaseOnlyWithRetry(from, to string) error {
+	temp := filepath.Join(filepath.Dir(from), fmt.Sprintf(".robodiff-rename-%d", time.Now().UnixNano()))
+	if err := renameWithRetry(from, temp); err != nil {
+		return err
+	}
+	if err := renameWithRetry(temp, to); err != nil {
+		_ = renameWithRetry(temp, from)
+		return err
+	}
+	return nil
+}
+
+func isRetryableRenameError(err error) bool {
+	var pathErr *os.PathError
+	if !errors.As(err, &pathErr) {
+		return false
+	}
+	switch pathErr.Err {
+	case syscall.EBUSY, syscall.EPERM, syscall.EACCES:
+		return true
+	default:
+		return false
+	}
+}
+
+func exactSamePath(a, b string) bool {
+	return filepath.Clean(a) == filepath.Clean(b)
 }
 
 func runFolderSize(dir string) int64 {
