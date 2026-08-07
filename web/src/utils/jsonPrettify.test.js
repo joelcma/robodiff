@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   splitTextByJsonAssignments,
+  tryExtractComparison,
   tryExtractJsonishComparison,
   tryPrettifyJsonishValue,
 } from "./jsonPrettify.js";
@@ -53,5 +54,17 @@ describe("jsonPrettify", () => {
     const right = JSON.parse(comparison.right.pretty);
     assert.equal(left[0].a, 1);
     assert.equal(right[0].a, 2);
+  });
+
+  it("extracts scalar equality failures", () => {
+    const comparison = tryExtractComparison("3995 != 4000");
+
+    assert.deepEqual(comparison, {
+      prefix: "",
+      operator: "!=",
+      left: { raw: "3995", pretty: "3995" },
+      right: { raw: "4000", pretty: "4000" },
+      suffix: "",
+    });
   });
 });

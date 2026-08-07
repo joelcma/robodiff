@@ -36,6 +36,13 @@ export default function KeywordItem({ keyword, depth, runId }) {
   const hasMessages = keyword.messages && keyword.messages.length > 0;
   const hasArguments = keyword.arguments && keyword.arguments.length > 0;
   const hasFail = keyword.status?.toLowerCase() === "fail";
+  const statusFailureMessage = String(keyword.statusMessage || "").trim();
+  const hasDistinctStatusFailure =
+    hasFail &&
+    statusFailureMessage &&
+    !keyword.messages.some(
+      (message) => String(message.text || "").trim() === statusFailureMessage,
+    );
 
   const apiRequestCount = countHttpRequestMessagesInBranch(keyword);
 
@@ -50,7 +57,8 @@ export default function KeywordItem({ keyword, depth, runId }) {
   const defaultCollapsed = depth === 0 ? !hasFailInBranchForExpand : !hasFail;
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
 
-  const hasContent = hasArguments || hasMessages || hasChildren;
+  const hasContent =
+    hasArguments || hasMessages || hasDistinctStatusFailure || hasChildren;
 
   // Determine effective status: bubble failures from children unless this keyword
   // is a boundary (e.g., Run Keyword And Return Status).
@@ -248,9 +256,27 @@ export default function KeywordItem({ keyword, depth, runId }) {
 
           {hasMessages && (
             <div className="keyword-messages">
+              {hasDistinctStatusFailure && (
+                <MessageItem
+                  message={{
+                    level: "FAIL",
+                    text: statusFailureMessage,
+                  }}
+                  runId={runId}
+                />
+              )}
               {keyword.messages.map((msg, i) => (
                 <MessageItem key={i} message={msg} runId={runId} />
               ))}
+            </div>
+          )}
+
+          {hasDistinctStatusFailure && !hasMessages && (
+            <div className="keyword-messages">
+              <MessageItem
+                message={{ level: "FAIL", text: statusFailureMessage }}
+                runId={runId}
+              />
             </div>
           )}
 

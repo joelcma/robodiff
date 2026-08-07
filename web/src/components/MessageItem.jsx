@@ -2,7 +2,7 @@ import { formatTime } from "../utils/timeFormatter";
 import { buildApiUrl } from "../utils/apiBase";
 import {
   splitTextByJsonAssignments,
-  tryExtractJsonishComparison,
+  tryExtractComparison,
 } from "../utils/jsonPrettify";
 import { buildCurlFromText } from "../utils/httpCurl";
 import { diffAlignLines } from "../utils/lineDiff";
@@ -59,7 +59,7 @@ function normalizeScreenshotPath(path) {
 }
 
 export default function MessageItem({ message, runId }) {
-  const comparison = tryExtractJsonishComparison(message.text);
+  const comparison = tryExtractComparison(message.text);
   const isFailLevel =
     String(message.level || "").toLowerCase() === "fail" ||
     String(message.level || "").toLowerCase() === "error";
@@ -109,7 +109,7 @@ export default function MessageItem({ message, runId }) {
             <div className="message-compare keyword-compare">
               <div className="keyword-compare-side">
                 <span className="argument-key-row">
-                  <span className="argument-key">left</span>
+                  <span className="argument-key">Expected (first argument)</span>
                   <button
                     type="button"
                     className="json-copy-btn"
@@ -152,7 +152,7 @@ export default function MessageItem({ message, runId }) {
 
               <div className="keyword-compare-side">
                 <span className="argument-key-row">
-                  <span className="argument-key">right</span>
+                  <span className="argument-key">Actual (second argument)</span>
                   <button
                     type="button"
                     className="json-copy-btn"

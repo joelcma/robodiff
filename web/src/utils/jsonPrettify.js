@@ -443,6 +443,27 @@ export function tryExtractJsonishComparison(text) {
   };
 }
 
+// Extract ordinary Robot Framework equality failures such as `3995 != 4000`.
+// JSON comparisons are handled above because they need special parsing and
+// pretty-printing; this fallback deliberately keeps scalar values as-is.
+export function tryExtractComparison(text) {
+  const jsonishComparison = tryExtractJsonishComparison(text);
+  if (jsonishComparison) return jsonishComparison;
+  if (typeof text !== "string") return null;
+
+  const match = text.match(/^\s*(.+?)\s*(!=|==)\s*(.+?)\s*$/s);
+  if (!match) return null;
+
+  const [, left, operator, right] = match;
+  return {
+    prefix: "",
+    operator,
+    left: { raw: left, pretty: left },
+    right: { raw: right, pretty: right },
+    suffix: "",
+  };
+}
+
 function extractJsonishValueAtOrAfter(text, startIndex) {
   // Scan forward to a possible json-ish wrapper or direct {/[.
   for (let i = startIndex; i < text.length; i++) {
