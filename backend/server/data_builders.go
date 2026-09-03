@@ -32,6 +32,23 @@ type timeBreakdownSummary struct {
 	AccountedPct     float64 `json:"accountedPct"`
 }
 
+type keywordTimingOccurrence struct {
+	TestName   string `json:"testName"`
+	DurationMs int64  `json:"durationMs"`
+	Status     string `json:"status"`
+}
+
+type keywordTiming struct {
+	Name              string                    `json:"name"`
+	Owner             string                    `json:"owner,omitempty"`
+	DisplayName       string                    `json:"displayName"`
+	TotalDurationMs   int64                     `json:"totalDurationMs"`
+	CallCount         int                       `json:"callCount"`
+	AverageDurationMs int64                     `json:"averageDurationMs"`
+	MaxDurationMs     int64                     `json:"maxDurationMs"`
+	Occurrences       []keywordTimingOccurrence `json:"occurrences"`
+}
+
 func buildTestBodyKeywords(test *rdiff.Test) []rdiff.Keyword {
 	if len(test.Body) > 0 {
 		return orderedBodyToKeywords(test.Body)
@@ -244,6 +261,102 @@ func buildTimeBreakdownData(suite *rdiff.Suite) (timeBreakdownNode, timeBreakdow
 	summary.LongestTestName = longestTestName
 	summary.LongestTestMs = longestTestMs
 	return root, summary
+}
+
+func buildKeywordTimingData(suite *rdiff.Suite) []keywordTiming {
+	byKeyword := make(map[string]*keywordTiming)
+
+	var visitSuite func(current *rdiff.Suite, prefix string)
+	visitSuite = func(current *rdiff.Suite, prefix string) {
+		fullName := current.Name
+		if prefix != "" {
+			fullName = prefix + "." + current.Name
+		}
+
+		for i := range current.Tests {
+			test := &current.Tests[i]
+			testName := fullName + "." + test.Name
+			for _, keyword := range buildTestBodyKeywords(test) {
+				collectKeywordTiming(byKeyword, keyword, testName)
+			}
+		}
+		for i := range current.Suites {
+			visitSuite(&current.Suites[i], fullName)
+		}
+	}
+
+	visitSuite(suite, "")
+	result := make([]keywordTiming, 0, len(byKeyword))
+	for _, timing := range byKeyword {
+		timing.AverageDurationMs = timing.TotalDurationMs / int64(timing.CallCount)
+		sort.SliceStable(timing.Occurrences, func(i, j int) bool {
+			return timing.Occurrences[i].DurationMs > timing.Occurrences[j].DurationMs
+		})
+		if len(timing.Occurrences) > 5 {
+			timing.Occurrences = timing.Occurrences[:5]
+		}
+		result = append(result, *timing)
+	}
+
+	sort.SliceStable(result, func(i, j int) bool {
+		if result[i].TotalDurationMs == result[j].TotalDurationMs {
+			return strings.ToLower(result[i].DisplayName) < strings.ToLower(result[j].DisplayName)
+		}
+		return result[i].TotalDurationMs > result[j].TotalDurationMs
+	})
+	return result
+}
+
+func collectKeywordTiming(byKeyword map[string]*keywordTiming, keyword rdiff.Keyword, testName string) {
+	if !isSyntheticKeyword(keyword) {
+		name := strings.TrimSpace(keyword.Name)
+		owner := strings.TrimSpace(keyword.Owner)
+		if name != "" {
+			key := normalizeKeywordTimingName(owner) + "\x00" + normalizeKeywordTimingName(name)
+			timing := byKeyword[key]
+			if timing == nil {
+				displayName := name
+				if owner != "" {
+					displayName = owner + "." + name
+				}
+				timing = &keywordTiming{
+					Name:        name,
+					Owner:       owner,
+					DisplayName: displayName,
+				}
+				byKeyword[key] = timing
+			}
+
+			durationMs := durationMsFromStatus(keyword.Status)
+			timing.TotalDurationMs += durationMs
+			timing.CallCount++
+			if durationMs > timing.MaxDurationMs {
+				timing.MaxDurationMs = durationMs
+			}
+			timing.Occurrences = append(timing.Occurrences, keywordTimingOccurrence{
+				TestName:   testName,
+				DurationMs: durationMs,
+				Status:     keyword.Status.Status,
+			})
+		}
+	}
+
+	for _, child := range keywordChildrenInOrder(keyword) {
+		collectKeywordTiming(byKeyword, child, testName)
+	}
+}
+
+func isSyntheticKeyword(keyword rdiff.Keyword) bool {
+	switch keyword.Type {
+	case "IF", "BRANCH", "FOR", "ITER", "RETURN":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeKeywordTimingName(value string) string {
+	return strings.ToLower(strings.Join(strings.Fields(strings.ReplaceAll(value, "_", " ")), " "))
 }
 
 func buildTimeBreakdownNode(suite *rdiff.Suite, prefix string) timeBreakdownNode {

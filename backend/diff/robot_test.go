@@ -28,3 +28,25 @@ WebDriverException: failed to change window state</status>
 		t.Fatalf("suite status message = %q, want %q", got, "Suite setup failed")
 	}
 }
+
+func TestParseRobotXMLPreservesKeywordOwner(t *testing.T) {
+	data := []byte(`<robot>
+  <suite name="Suite">
+    <test name="Test">
+      <kw name="Log" owner="BuiltIn">
+        <status status="PASS" elapsed="0.001" />
+      </kw>
+      <status status="PASS" elapsed="0.001" />
+    </test>
+    <status status="PASS" elapsed="0.001" />
+  </suite>
+</robot>`)
+
+	robot, err := ParseRobotXMLBytes(data)
+	if err != nil {
+		t.Fatalf("ParseRobotXMLBytes() error = %v", err)
+	}
+	if got := robot.Suite.Tests[0].Keywords[0].Owner; got != "BuiltIn" {
+		t.Fatalf("keyword owner = %q, want %q", got, "BuiltIn")
+	}
+}

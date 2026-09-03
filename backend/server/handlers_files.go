@@ -60,11 +60,40 @@ func (s *Server) handleRunFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	info, err := os.Stat(absClean)
-	if err != nil || info.IsDir() {
+	resolved, ok := resolveRunScreenshot(baseAbs, clean)
+	if !ok {
 		writeError(w, http.StatusNotFound, "file not found")
 		return
 	}
 
-	http.ServeFile(w, r, absClean)
+	http.ServeFile(w, r, resolved)
+}
+
+func resolveRunScreenshot(baseDir, cleanPath string) (string, bool) {
+	direct := filepath.Join(baseDir, cleanPath)
+	if isRegularFile(direct) {
+		return direct, true
+	}
+
+	// The merged Pabot output keeps screenshot references as screenshots/..., but
+	// the files remain under pabot_results/<worker>/screenshots.
+	workers, err := os.ReadDir(filepath.Join(baseDir, "pabot_results"))
+	if err != nil {
+		return "", false
+	}
+	for _, worker := range workers {
+		if !worker.IsDir() {
+			continue
+		}
+		candidate := filepath.Join(baseDir, "pabot_results", worker.Name(), cleanPath)
+		if isRegularFile(candidate) {
+			return candidate, true
+		}
+	}
+	return "", false
+}
+
+func isRegularFile(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular()
 }

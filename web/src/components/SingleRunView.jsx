@@ -179,6 +179,7 @@ export default function SingleRunView({
           <TimeBreakdown
             breakdown={singleRun.timeBreakdown}
             summary={singleRun.timeSummary}
+            keywords={singleRun.keywordBreakdown}
           />
         ) : null}
 

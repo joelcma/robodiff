@@ -316,6 +316,12 @@ func (s *RunStore) scanOnce() {
 				}
 			}
 			if isDir {
+				// Pabot stores per-worker Robot outputs here before producing the
+				// merged output.xml in the run directory. These are artifacts of a
+				// single run, not separate runs for the UI.
+				if strings.EqualFold(name, "pabot_results") {
+					continue
+				}
 				scanDir(absPath, depth+1)
 				continue
 			}

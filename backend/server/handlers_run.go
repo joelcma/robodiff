@@ -45,11 +45,12 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 	robot := robots[0]
 	timeBreakdown, timeSummary := buildTimeBreakdownData(&robot.Suite)
 	data := map[string]any{
-		"title":         columns[0],
-		"file":          inputFiles[0],
-		"suites":        buildSuitesData(&robot.Suite),
-		"timeBreakdown": timeBreakdown,
-		"timeSummary":   timeSummary,
+		"title":            columns[0],
+		"file":             inputFiles[0],
+		"suites":           buildSuitesData(&robot.Suite),
+		"timeBreakdown":    timeBreakdown,
+		"timeSummary":      timeSummary,
+		"keywordBreakdown": buildKeywordTimingData(&robot.Suite),
 	}
 	writeJSON(w, http.StatusOK, data)
 }

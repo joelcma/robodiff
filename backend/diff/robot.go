@@ -9,8 +9,8 @@ import (
 
 // Robot Framework XML structures
 type Robot struct {
-	XMLName xml.Name `xml:"robot"`
-	Suite   Suite    `xml:"suite"`
+	XMLName    xml.Name    `xml:"robot"`
+	Suite      Suite       `xml:"suite"`
 	Statistics *Statistics `xml:"statistics"`
 }
 
@@ -56,23 +56,24 @@ type Suite struct {
 }
 
 type Test struct {
-	Name     string    `xml:"name,attr"`
-	Status   Status    `xml:"status"`
-	Keywords []Keyword `xml:"kw"`
-	Ifs      []If      `xml:"if"`
-	Fors     []For     `xml:"for"`
+	Name     string     `xml:"name,attr"`
+	Status   Status     `xml:"status"`
+	Keywords []Keyword  `xml:"kw"`
+	Ifs      []If       `xml:"if"`
+	Fors     []For      `xml:"for"`
 	Body     []BodyItem `xml:"-"`
 }
 
 type Keyword struct {
-	Name      string    `xml:"name,attr"`
-	Type      string    `xml:"type,attr"`
-	Keywords  []Keyword `xml:"kw"`
-	Ifs       []If      `xml:"if"`
-	Fors      []For     `xml:"for"`
-	Arguments []string  `xml:"arg"`
-	Messages  []Message `xml:"msg"`
-	Status    Status    `xml:"status"`
+	Name      string     `xml:"name,attr"`
+	Owner     string     `xml:"owner,attr"`
+	Type      string     `xml:"type,attr"`
+	Keywords  []Keyword  `xml:"kw"`
+	Ifs       []If       `xml:"if"`
+	Fors      []For      `xml:"for"`
+	Arguments []string   `xml:"arg"`
+	Messages  []Message  `xml:"msg"`
+	Status    Status     `xml:"status"`
 	Body      []BodyItem `xml:"-"`
 }
 
@@ -93,30 +94,30 @@ type If struct {
 }
 
 type Branch struct {
-	Type      string   `xml:"type,attr"`
-	Condition string   `xml:"condition,attr"`
-	Keywords  []Keyword `xml:"kw"`
-	Ifs       []If      `xml:"if"`
-	Fors      []For     `xml:"for"`
-	Return    *Return   `xml:"return"`
-	Status    Status    `xml:"status"`
+	Type      string     `xml:"type,attr"`
+	Condition string     `xml:"condition,attr"`
+	Keywords  []Keyword  `xml:"kw"`
+	Ifs       []If       `xml:"if"`
+	Fors      []For      `xml:"for"`
+	Return    *Return    `xml:"return"`
+	Status    Status     `xml:"status"`
 	Body      []BodyItem `xml:"-"`
 }
 
 type For struct {
-	Flavor string `xml:"flavor,attr"`
-	Iter   []Iter `xml:"iter"`
+	Flavor string   `xml:"flavor,attr"`
+	Iter   []Iter   `xml:"iter"`
 	Var    []string `xml:"var"`
 	Value  []string `xml:"value"`
-	Status Status `xml:"status"`
+	Status Status   `xml:"status"`
 }
 
 type Iter struct {
-	Keywords []Keyword `xml:"kw"`
-	Ifs      []If      `xml:"if"`
-	Fors     []For     `xml:"for"`
-	Return   *Return   `xml:"return"`
-	Status   Status    `xml:"status"`
+	Keywords []Keyword  `xml:"kw"`
+	Ifs      []If       `xml:"if"`
+	Fors     []For      `xml:"for"`
+	Return   *Return    `xml:"return"`
+	Status   Status     `xml:"status"`
 	Body     []BodyItem `xml:"-"`
 }
 
@@ -207,6 +208,8 @@ func (k *Keyword) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 		switch a.Name.Local {
 		case "name":
 			k.Name = a.Value
+		case "owner":
+			k.Owner = a.Value
 		case "type":
 			k.Type = a.Value
 		}
