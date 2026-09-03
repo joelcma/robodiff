@@ -81,12 +81,13 @@ func (s *Server) handleTestDetails(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]any{
-		"runId":  req.RunID,
-		"name":     test.Name,
-		"status":   test.Status.Status,
-		"start":    test.Status.StartTime,
-		"end":      test.Status.EndTime,
-		"keywords": buildKeywordsData(buildTestBodyKeywords(test)),
+		"runId":         req.RunID,
+		"name":          test.Name,
+		"status":        test.Status.Status,
+		"statusMessage": test.Status.Message,
+		"start":         test.Status.StartTime,
+		"end":           test.Status.EndTime,
+		"keywords":      buildKeywordsData(buildTestBodyKeywords(test)),
 	}
 	writeJSON(w, http.StatusOK, data)
 }

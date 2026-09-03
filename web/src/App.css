@@ -216,6 +216,10 @@
   font-weight: 600;
 }
 
+.test-status-message {
+  margin-bottom: 24px;
+}
+
 .time-breakdown-section {
   margin: 20px 24px 8px;
   padding: 20px;

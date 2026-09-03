@@ -437,19 +437,12 @@ func (s *Status) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 		}
 	}
 
-	// Drain any nested content if present.
-	for {
-		tok, err := d.Token()
-		if err != nil {
-			if err == io.EOF {
-				return nil
-			}
-			return err
-		}
-		if end, ok := tok.(xml.EndElement); ok && end.Name.Local == start.Name.Local {
-			return nil
-		}
+	var message string
+	if err := d.DecodeElement(&message, &start); err != nil {
+		return err
 	}
+	s.Message = message
+	return nil
 }
 
 // sanity helpers used by UI pseudo-kw naming in other packages (kept here for debugging)

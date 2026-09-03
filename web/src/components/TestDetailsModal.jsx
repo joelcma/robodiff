@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import KeywordItem from "./KeywordItem";
+import MessageItem from "./MessageItem";
 import { formatTime } from "../utils/timeFormatter";
 
 export default function TestDetailsModal({ testDetails, onClose }) {
@@ -38,6 +39,18 @@ export default function TestDetailsModal({ testDetails, onClose }) {
         </div>
 
         <div className="modal-body">
+          {testDetails.statusMessage && (
+            <div className="test-status-message">
+              <MessageItem
+                message={{
+                  level: testDetails.status === "FAIL" ? "FAIL" : "INFO",
+                  text: testDetails.statusMessage,
+                }}
+                runId={testDetails.runId}
+              />
+            </div>
+          )}
+
           {testDetails.keywords && testDetails.keywords.length > 0 ? (
             <div className="keywords-section">
               <h3>Keywords</h3>
@@ -53,7 +66,9 @@ export default function TestDetailsModal({ testDetails, onClose }) {
               </div>
             </div>
           ) : (
-            <p className="no-data">No keyword data available for this test.</p>
+            !testDetails.statusMessage && (
+              <p className="no-data">No keyword data available for this test.</p>
+            )
           )}
         </div>
       </div>
