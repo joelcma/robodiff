@@ -266,3 +266,49 @@ Contributions welcome. Open issues for bugs/feature requests. For code changes, 
 Apache-2.0
 
 This repository is a derivative of the Robot Framework Robot Diff tool (Nokia) and retains attribution to the original authors.
+
+## Agent diagnostics
+
+Robodiff provides a read-only, bounded JSON interface for investigating results:
+
+- `GET /api/agent/runs`
+- `GET /api/agent/runs/{runId}/triage`
+- `GET /api/agent/runs/{runId}/analysis-pack`
+- `GET /api/agent/runs/{runId}/errors`
+- `GET /api/agent/runs/{runId}/tests?status=FAIL`
+- `GET /api/agent/runs/{runId}/groups/{groupId}/tests`
+- `GET /api/agent/runs/{runId}/tests/{testId}`
+- `GET /api/agent/runs/{runId}/nodes/{nodeId}`
+
+Start with `analysis-pack`, then follow a representative test or failure node.
+It returns at most five groups with one representative of each. Use full
+`triage` only when the compact pack indicates that more grouping detail is
+needed. Suite
+setup/teardown failures are prioritized; explicit Robot propagation messages link
+cascading test failures to their fixture. Other failures are grouped by keyword
+path and whitespace-normalized message. Groups suggest common symptoms, not
+proven root causes. Failed attempts under successful retries are excluded from
+terminal failure lists, but remain accessible in keyword children.
+
+Collections accept `offset` and `limit` (default 20, maximum 100), and return
+`items`, `total`, `nextOffset`, and `truncated`. Text fields are capped at 2,000
+Unicode characters and accept `textOffset` for subsequent chunks. The default
+text preview is 512 Unicode characters; pass `textLimit` up to 2,000 when more
+text is needed. All responses
+include `schemaVersion: 1`. Test/node IDs distinguish duplicate names and are
+stable only for an unchanged artifact; they are not cross-run identifiers.
+Source locations are retained when present in XML. Screenshot references reuse
+`/api/run-file`, including its Pabot lookup.
+
+The first version covers keyword, IF and FOR evidence; other control structures
+may be absent. Triage reports this limitation explicitly and exposes the root
+status and execution error count. `/errors` provides the execution error details.
+The comparison API, standalone analyzer and MCP adapter are not part of this
+initial diagnostic interface.
+
+The reusable [robodiff-results skill](skills/robodiff-results/SKILL.md) describes
+connection discovery, pagination, investigation and evidence reporting. Copy its
+folder into your agent's skill directory (for Codex: `~/.codex/skills/`). The CLI
+uses port 8080 by default; Electron chooses a dynamic port recorded in its
+`robodiff.log` as `Backend args: --addr ...`. Rebuild and restart an existing
+backend to expose the new endpoints.

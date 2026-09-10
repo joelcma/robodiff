@@ -3,6 +3,7 @@ package backend
 import "net/http"
 
 func (s *Server) registerRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/api/agent/", s.handleAgent)
 	mux.HandleFunc("/api/health", s.handleHealth)
 	mux.HandleFunc("/api/config", s.handleConfig)
 	mux.HandleFunc("/api/runs", s.handleRuns)

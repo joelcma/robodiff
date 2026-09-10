@@ -2,14 +2,19 @@ package backend
 
 import (
 	"net/http"
+	"sync"
 	"time"
 
+	rdiff "robot_diff/backend/diff"
 	"robot_diff/backend/store"
 )
 
 type Server struct {
-	store *store.RunStore
-	addr  string
+	store      *store.RunStore
+	addr       string
+	agentMu    sync.Mutex
+	agentRobot *rdiff.Robot
+	agentData  *agentIndex
 }
 
 func NewServer(addr string, store *store.RunStore) *Server {

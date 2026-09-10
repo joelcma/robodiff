@@ -12,6 +12,7 @@ type Robot struct {
 	XMLName    xml.Name    `xml:"robot"`
 	Suite      Suite       `xml:"suite"`
 	Statistics *Statistics `xml:"statistics"`
+	Errors     []Message   `xml:"errors>msg"`
 }
 
 // Statistics mirrors the <statistics> section near the end of output.xml.
@@ -49,13 +50,18 @@ func (t TotalStats) AllTests() (pass, fail, skip int, ok bool) {
 }
 
 type Suite struct {
-	Name   string  `xml:"name,attr"`
-	Suites []Suite `xml:"suite"`
-	Tests  []Test  `xml:"test"`
-	Status Status  `xml:"status"`
+	ID       string    `xml:"id,attr"`
+	Source   string    `xml:"source,attr"`
+	Keywords []Keyword `xml:"kw"`
+	Name     string    `xml:"name,attr"`
+	Suites   []Suite   `xml:"suite"`
+	Tests    []Test    `xml:"test"`
+	Status   Status    `xml:"status"`
 }
 
 type Test struct {
+	ID       string     `xml:"id,attr"`
+	Line     string     `xml:"lineno,attr"`
 	Name     string     `xml:"name,attr"`
 	Status   Status     `xml:"status"`
 	Keywords []Keyword  `xml:"kw"`
@@ -65,6 +71,8 @@ type Test struct {
 }
 
 type Keyword struct {
+	Source    string     `xml:"source,attr"`
+	Line      string     `xml:"lineno,attr"`
 	Name      string     `xml:"name,attr"`
 	Owner     string     `xml:"owner,attr"`
 	Type      string     `xml:"type,attr"`
@@ -146,7 +154,12 @@ type Status struct {
 func (t *Test) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	*t = Test{}
 	for _, a := range start.Attr {
-		if a.Name.Local == "name" {
+		switch a.Name.Local {
+		case "id":
+			t.ID = a.Value
+		case "lineno":
+			t.Line = a.Value
+		case "name":
 			t.Name = a.Value
 		}
 	}
@@ -206,6 +219,10 @@ func (k *Keyword) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	*k = Keyword{}
 	for _, a := range start.Attr {
 		switch a.Name.Local {
+		case "source":
+			k.Source = a.Value
+		case "lineno":
+			k.Line = a.Value
 		case "name":
 			k.Name = a.Value
 		case "owner":
