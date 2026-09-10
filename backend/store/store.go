@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -27,7 +27,7 @@ var errRunNotFound = errors.New("run not found")
 
 const hotFileCooldown = 5 * time.Second
 
-const runCacheVersion = 1
+const runCacheVersion = 2
 
 type Config struct {
 	Dir      string
@@ -37,6 +37,7 @@ type Config struct {
 type RunInfo struct {
 	ID         string    `json:"id"`
 	Name       string    `json:"name"`
+	Project    string    `json:"project"`
 	RelPath    string    `json:"relPath"`
 	ModTime    time.Time `json:"modTime"`
 	Size       int64     `json:"size"`
@@ -47,19 +48,19 @@ type RunInfo struct {
 }
 
 type runEntry struct {
-	info         RunInfo
-	abs          string
-	robot        *robodiff.Robot
-	robotModTime time.Time
-	robotSize    int64
+	info               RunInfo
+	abs                string
+	robot              *robodiff.Robot
+	robotModTime       time.Time
+	robotSize          int64
 	statsIncomplete    bool
 	durationIncomplete bool
-	hotUntil     time.Time
+	hotUntil           time.Time
 }
 
 type RunStore struct {
-	dir      string
-	interval time.Duration
+	dir       string
+	interval  time.Duration
 	cachePath string
 
 	mu   sync.RWMutex
@@ -360,6 +361,7 @@ func (s *RunStore) scanOnce() {
 			if runName == "" || runName == string(filepath.Separator) || lower != "output.xml" {
 				runName = strings.TrimSuffix(name, filepath.Ext(name))
 			}
+			projectName := projectNameForRobotXML(abs)
 
 			runSize := runFolderSize(filepath.Dir(abs))
 			isHot := now.Sub(fi.ModTime()) < hotFileCooldown
@@ -375,6 +377,7 @@ func (s *RunStore) scanOnce() {
 					clone.abs = abs
 					clone.info.ID = id
 					clone.info.Name = runName
+					clone.info.Project = projectName
 					clone.info.RelPath = filepath.ToSlash(rel)
 					clone.info.ModTime = fi.ModTime()
 					clone.info.Size = runSize
@@ -393,6 +396,7 @@ func (s *RunStore) scanOnce() {
 					info: RunInfo{
 						ID:         id,
 						Name:       runName,
+						Project:    projectName,
 						RelPath:    filepath.ToSlash(rel),
 						ModTime:    fi.ModTime(),
 						Size:       runSize,
@@ -403,7 +407,7 @@ func (s *RunStore) scanOnce() {
 					},
 					statsIncomplete:    true,
 					durationIncomplete: true,
-					hotUntil:            now.Add(hotFileCooldown),
+					hotUntil:           now.Add(hotFileCooldown),
 				}
 				continue
 			}
@@ -421,6 +425,7 @@ func (s *RunStore) scanOnce() {
 				info: RunInfo{
 					ID:         id,
 					Name:       runName,
+					Project:    projectName,
 					RelPath:    filepath.ToSlash(rel),
 					ModTime:    fi.ModTime(),
 					Size:       runSize,
@@ -448,6 +453,83 @@ func (s *RunStore) scanOnce() {
 	}
 
 	s.startBackgroundFill()
+}
+
+// projectNameForRobotXML derives the checkout name from Robot's top-level suite
+// source. This reflects the project that executed the tests, independently of
+// where its output.xml was later copied or archived.
+func projectNameForRobotXML(path string) string {
+	source, err := readRobotSuiteSource(path)
+	if err != nil || source == "" {
+		return "Unknown project"
+	}
+
+	dir := filepath.Clean(source)
+	if filepath.Ext(dir) != "" {
+		dir = filepath.Dir(dir)
+	}
+	if root := gitRoot(dir); root != "" {
+		return filepath.Base(root)
+	}
+
+	// Archived output can point to a checkout that is no longer available. For
+	// common Robot layouts, the directory immediately above robot/tests is the
+	// most useful project label; otherwise retain the source directory name.
+	for current := dir; ; current = filepath.Dir(current) {
+		switch strings.ToLower(filepath.Base(current)) {
+		case "robot", "test", "tests", "suites", "e2e", "atdd":
+			parent := filepath.Dir(current)
+			if parent != current && filepath.Base(parent) != "." {
+				return filepath.Base(parent)
+			}
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+	}
+	if base := filepath.Base(dir); base != "." && base != string(filepath.Separator) {
+		return base
+	}
+	return "Unknown project"
+}
+
+func readRobotSuiteSource(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	decoder := xml.NewDecoder(f)
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			return "", err
+		}
+		start, ok := token.(xml.StartElement)
+		if !ok || start.Name.Local != "suite" {
+			continue
+		}
+		for _, attr := range start.Attr {
+			if attr.Name.Local == "source" {
+				return attr.Value, nil
+			}
+		}
+		return "", nil
+	}
+}
+
+func gitRoot(dir string) string {
+	for current := dir; ; current = filepath.Dir(current) {
+		if _, err := os.Stat(filepath.Join(current, ".git")); err == nil {
+			return current
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return ""
+		}
+	}
 }
 
 func (s *RunStore) loadCache() {

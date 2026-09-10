@@ -792,6 +792,36 @@
   width: 100%;
 }
 
+.project-filter {
+  white-space: nowrap;
+}
+
+.project-filter select {
+  min-width: 150px;
+}
+
+.project-badge {
+  display: inline-flex;
+  align-items: center;
+  max-width: 180px;
+  padding: 3px 9px;
+  border: 1px solid hsl(var(--project-hue) 75% 62% / 0.6);
+  border-radius: 999px;
+  background: hsl(var(--project-hue) 75% 58% / 0.16);
+  color: hsl(var(--project-hue) 90% 82%);
+  font-size: 0.85em;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.project-badge:hover {
+  background: hsl(var(--project-hue) 75% 58% / 0.28);
+}
+
 .close-btn {
   width: 32px;
   height: 32px;
@@ -2203,6 +2233,11 @@ html[data-theme="light"] .rename-input {
 html[data-theme="light"] .diff td,
 html[data-theme="light"] .runs td {
   color: #111827;
+}
+
+html[data-theme="light"] .project-badge {
+  color: hsl(var(--project-hue) 60% 28%);
+  background: hsl(var(--project-hue) 75% 58% / 0.13);
 }
 
 html[data-theme="light"] .diff tbody tr:hover,

@@ -35,6 +35,12 @@ function formatBytes(bytes) {
   return `${value.toFixed(precision)} ${units[idx]}`;
 }
 
+function projectHue(project, projectOptions) {
+  const index = Math.max(0, projectOptions.indexOf(project || "Unknown project"));
+  // Golden-angle spacing keeps every project visually distinct in one run list.
+  return (index * 137.508) % 360;
+}
+
 export default function RunList({
   runs,
   dir,
@@ -44,6 +50,9 @@ export default function RunList({
   onTogglePin,
   searchQuery,
   onSearchChange,
+  projectFilter,
+  onProjectFilterChange,
+  projectOptions,
   onSelectAll,
   onSelectFailed,
   onClearSelection,
@@ -138,6 +147,20 @@ export default function RunList({
               onChange={(e) => onSearchChange(e.target.value)}
             />
           </div>
+          <label className="project-filter">
+            <span>Project</span>
+            <select
+              value={projectFilter}
+              onChange={(e) => onProjectFilterChange(e.target.value)}
+            >
+              <option value="">All projects</option>
+              {projectOptions.map((project) => (
+                <option key={project} value={project}>
+                  {project}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="action-buttons">
             <button
               className="secondary"
@@ -245,6 +268,19 @@ export default function RunList({
                 >
                   Name
                   {sortBy === "name" && (
+                    <span className="sort-arrow">
+                      {sortDir === "asc" ? "↑" : "↓"}
+                    </span>
+                  )}
+                </th>
+                <th
+                  className={`sortable ${
+                    sortBy === "project" ? "sort-active" : ""
+                  }`}
+                  onClick={() => onSort("project")}
+                >
+                  Project
+                  {sortBy === "project" && (
                     <span className="sort-arrow">
                       {sortDir === "asc" ? "↑" : "↓"}
                     </span>
@@ -451,6 +487,21 @@ export default function RunList({
                           </>
                         )}
                       </div>
+                    </td>
+                    <td>
+                      <span
+                        className="project-badge"
+                        style={{
+                          "--project-hue": projectHue(run.project, projectOptions),
+                        }}
+                        title={`Filter to ${run.project || "Unknown project"}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onProjectFilterChange(run.project || "Unknown project");
+                        }}
+                      >
+                        {run.project || "Unknown project"}
+                      </span>
                     </td>
                     <td className="time-cell">{formatTime(run.modTime)}</td>
                     <td className="num-cell">

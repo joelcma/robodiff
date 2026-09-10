@@ -45,6 +45,27 @@ func TestScanOnceDoesNotExposeIncompletePabotWorkers(t *testing.T) {
 	}
 }
 
+func TestScanOnceDerivesProjectFromSuiteSourceGitRoot(t *testing.T) {
+	root := t.TempDir()
+	projectDir := filepath.Join(root, "ratko-frontend")
+	source := filepath.Join(projectDir, "robot", "smoke", "login.robot")
+	if err := os.MkdirAll(filepath.Join(projectDir, ".git"), 0o755); err != nil {
+		t.Fatalf("MkdirAll project git directory: %v", err)
+	}
+	writeRobotOutputWithSource(t, filepath.Join(root, "runs", "smoke", "output.xml"), source)
+
+	store := newTestRunStore(root)
+	store.ScanOnce()
+
+	runs := store.ListRuns()
+	if len(runs) != 1 {
+		t.Fatalf("ListRuns() returned %d runs, want 1", len(runs))
+	}
+	if got, want := runs[0].Project, "ratko-frontend"; got != want {
+		t.Fatalf("project = %q, want %q", got, want)
+	}
+}
+
 func newTestRunStore(root string) *RunStore {
 	return &RunStore{
 		dir:      root,
@@ -54,11 +75,19 @@ func newTestRunStore(root string) *RunStore {
 }
 
 func writeRobotOutput(t *testing.T, path string) {
+	writeRobotOutputWithSource(t, path, "")
+}
+
+func writeRobotOutputWithSource(t *testing.T, path, source string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q): %v", filepath.Dir(path), err)
 	}
-	if err := os.WriteFile(path, []byte(robotOutput), 0o644); err != nil {
+	output := robotOutput
+	if source != "" {
+		output = `<robot><suite name="Suite" source="` + source + `"><status status="PASS"/></suite></robot>`
+	}
+	if err := os.WriteFile(path, []byte(output), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q): %v", path, err)
 	}
 }

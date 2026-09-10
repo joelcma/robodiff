@@ -33,6 +33,7 @@ function App() {
   const [renamingRunId, setRenamingRunId] = useState("");
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [projectFilter, setProjectFilter] = useState("");
   const [sortBy, setSortBy] = useState("modTime");
   const [sortDir, setSortDir] = useState("desc");
   const [diffFilter, setDiffFilter] = useState("all");
@@ -57,6 +58,13 @@ function App() {
   });
 
   const selectedIds = useMemo(() => Array.from(selected), [selected]);
+  const projectOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(runs.map((run) => run.project || "Unknown project")),
+      ).sort((a, b) => a.localeCompare(b)),
+    [runs],
+  );
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -73,9 +81,14 @@ function App() {
     let filtered = runs.filter((r) =>
       searchQuery
         ? r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          r.relPath.toLowerCase().includes(searchQuery.toLowerCase())
+          r.relPath.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (r.project || "").toLowerCase().includes(searchQuery.toLowerCase())
         : true,
     );
+
+    if (projectFilter) {
+      filtered = filtered.filter((r) => r.project === projectFilter);
+    }
 
     filtered.sort((a, b) => {
       const aPinned = pinned.has(a.id);
@@ -99,7 +112,7 @@ function App() {
     });
 
     return filtered;
-  }, [runs, searchQuery, sortBy, sortDir, pinned]);
+  }, [runs, searchQuery, projectFilter, sortBy, sortDir, pinned]);
 
   // Filtered diff suites
   const filteredDiffSuites = useMemo(() => {
@@ -511,6 +524,9 @@ function App() {
           onTogglePin={togglePin}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
+          projectFilter={projectFilter}
+          onProjectFilterChange={setProjectFilter}
+          projectOptions={projectOptions}
           onSelectAll={selectAll}
           onSelectFailed={selectFailed}
           onClearSelection={clearSelection}
