@@ -29,12 +29,14 @@ type agentGroup struct {
 	message        string
 }
 type agentIndex struct {
-	nodes     map[string]*agentNode
-	tests     map[string]*agentTest
-	testOrder []string
-	groups    []*agentGroup
-	groupByID map[string]*agentGroup
-	counts    map[string]int
+	nodes         map[string]*agentNode
+	tests         map[string]*agentTest
+	testOrder     []string
+	groups        []*agentGroup
+	groupByID     map[string]*agentGroup
+	counts        map[string]int
+	timeSummary   timeBreakdownSummary
+	keywordTiming []keywordTiming
 }
 
 // The store replaces parsed Robot pointers when files change. Retain just the
@@ -53,6 +55,8 @@ func (s *Server) agentIndexFor(robot *rdiff.Robot) *agentIndex {
 func newAgentIndex(root *rdiff.Suite) *agentIndex {
 	a := &agentIndex{nodes: map[string]*agentNode{}, tests: map[string]*agentTest{}, groupByID: map[string]*agentGroup{}, counts: map[string]int{"total": 0, "pass": 0, "fail": 0, "skip": 0, "other": 0}}
 	a.addSuite(root, "s0", "", nil)
+	_, a.timeSummary = buildTimeBreakdownData(root)
+	a.keywordTiming = buildKeywordTimingData(root)
 	sort.SliceStable(a.groups, func(i, j int) bool {
 		left, right := a.groups[i], a.groups[j]
 		lf, rf := strings.HasPrefix(left.Kind, "suite-"), strings.HasPrefix(right.Kind, "suite-")

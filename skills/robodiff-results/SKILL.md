@@ -44,7 +44,7 @@ All routes below use GET. RUN, TEST, NODE and GROUP are returned IDs, not names.
 |---|---|
 | `/api/agent/runs` | Recent discovered runs |
 | `/api/agent/runs/RUN/triage` | Parsed test counts, run status, failure groups, execution error count |
-| `/api/agent/runs/RUN/analysis-pack` | Compact first-pass summary with top groups and representative evidence |
+| `/api/agent/runs/RUN/analysis-pack` | Compact first-pass summary with top groups, representative evidence, and slow-keyword timing |
 | `/api/agent/runs/RUN/errors` | Robot execution errors/warnings |
 | `/api/agent/runs/RUN/tests?status=FAIL` | Test references; status filter optional |
 | `/api/agent/runs/RUN/groups/GROUP/tests` | All affected test references |
@@ -54,6 +54,8 @@ All routes below use GET. RUN, TEST, NODE and GROUP are returned IDs, not names.
 Collections return `{items,total,offset,nextOffset,truncated}`. Default limit is 20, maximum 100. Fetch `?offset=N&limit=M` using that collection's `nextOffset`. On test/node responses the same offset applies independently to each collection; advance the collection you need rather than assuming their totals match.
 
 Text fields return `{text,totalChars,offset,nextOffset,truncated}`. The default preview is 512 Unicode characters; request `textLimit=N` up to 2,000 only when the evidence needs more context. Use `textOffset=N` on the same test/node/errors route to retrieve the next chunk, retaining the collection offset. Triage group messages are compact previews: fetch their evidence node or representative test for the full message. Labels are shortened to 512 characters; IDs are authoritative. Test/node full names and source strings have pageable fields.
+
+`analysis-pack` also returns `timeSummary` and up to ten `slowKeywords`. These are compact aggregates with total, call count, average, and maximum duration. Keyword durations are inclusive; nested calls can overlap, so do not add them together as wall-clock time. Use the slow list to choose which test/node to inspect next.
 
 IDs are positional and stable only while the artifact is unchanged. Do not use them to match tests across runs. Re-read triage after a rerun or file replacement. Source locations are included only when provided by XML; absence is not evidence that source is unavailable locally.
 

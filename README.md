@@ -283,7 +283,9 @@ Robodiff provides a read-only, bounded JSON interface for investigating results:
 Start with `analysis-pack`, then follow a representative test or failure node.
 It returns at most five groups with one representative of each. Use full
 `triage` only when the compact pack indicates that more grouping detail is
-needed. Suite
+needed. It also includes `timeSummary` and up to ten `slowKeywords` entries with
+total, call count, average, and maximum duration. Keyword durations are
+inclusive, so nested keyword durations can overlap. Suite
 setup/teardown failures are prioritized; explicit Robot propagation messages link
 cascading test failures to their fixture. Other failures are grouped by keyword
 path and whitespace-normalized message. Groups suggest common symptoms, not

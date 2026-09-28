@@ -86,6 +86,8 @@ func (s *Server) handleAgent(w http.ResponseWriter, r *http.Request) {
 		payload["runStatus"] = robots[0].Suite.Status.Status
 		payload["counts"] = a.counts
 		payload["executionErrorCount"] = len(robots[0].Errors)
+		payload["timeSummary"] = a.timeSummary
+		payload["slowKeywords"] = compactKeywordTiming(a.keywordTiming, 10)
 		payload["groupCount"] = len(a.groups)
 		payload["groups"] = groups
 		payload["groupsTruncated"] = len(a.groups) > len(groups)
@@ -218,6 +220,18 @@ func (s *Server) handleAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, payload)
+}
+
+func compactKeywordTiming(values []keywordTiming, limit int) []map[string]any {
+	result := make([]map[string]any, 0, minAgent(limit, len(values)))
+	for _, value := range values[:minAgent(limit, len(values))] {
+		result = append(result, map[string]any{
+			"name": value.Name, "owner": value.Owner, "displayName": value.DisplayName,
+			"totalDurationMs": value.TotalDurationMs, "callCount": value.CallCount,
+			"averageDurationMs": value.AverageDurationMs, "maxDurationMs": value.MaxDurationMs,
+		})
+	}
+	return result
 }
 
 var agentScreenshotPattern = regexp.MustCompile(`screenshots/[^\s"'<>]+\.(?:png|jpg|jpeg|gif|webp)`)

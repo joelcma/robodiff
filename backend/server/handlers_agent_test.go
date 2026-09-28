@@ -128,6 +128,12 @@ func TestAgentHTTPDrillDownAndPagination(t *testing.T) {
 	if pack["compact"] != true || pack["groupCount"] != float64(2) || pack["executionErrorCount"] != float64(1) {
 		t.Fatalf("analysis pack summary: %v", pack)
 	}
+	if pack["timeSummary"] == nil || pack["slowKeywords"] == nil {
+		t.Fatalf("analysis pack timing: %v", pack)
+	}
+	if len(pack["slowKeywords"].([]any)) == 0 {
+		t.Fatalf("analysis pack should include slow keywords: %v", pack)
+	}
 	packGroups := pack["groups"].([]any)
 	if len(packGroups) != 2 {
 		t.Fatalf("analysis pack groups: %v", packGroups)
