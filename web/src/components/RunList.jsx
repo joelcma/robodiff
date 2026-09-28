@@ -71,6 +71,7 @@ export default function RunList({
 }) {
   const selectedIds = Array.from(selected);
   const totalSize = runs.reduce((sum, run) => sum + (run.size || 0), 0);
+  const selectedProject = projectFilter || "All projects";
   const [editingRunId, setEditingRunId] = useState("");
   const [editingName, setEditingName] = useState("");
   const renameInputRef = useRef(null);
@@ -147,19 +148,30 @@ export default function RunList({
               onChange={(e) => onSearchChange(e.target.value)}
             />
           </div>
-          <label className="project-filter">
-            <span>Project</span>
-            <select
-              value={projectFilter}
-              onChange={(e) => onProjectFilterChange(e.target.value)}
-            >
-              <option value="">All projects</option>
-              {projectOptions.map((project) => (
-                <option key={project} value={project}>
-                  {project}
-                </option>
-              ))}
-            </select>
+          <label
+            className="project-filter"
+            style={{
+              "--project-hue": projectFilter
+                ? projectHue(projectFilter, projectOptions)
+                : 263,
+            }}
+          >
+            <span className="project-filter-control">
+              <span className="project-filter-swatch" aria-hidden="true" />
+              <select
+                value={projectFilter}
+                aria-label="Filter runs by project"
+                title={`Showing ${selectedProject}`}
+                onChange={(e) => onProjectFilterChange(e.target.value)}
+              >
+                <option value="">All projects</option>
+                {projectOptions.map((project) => (
+                  <option key={project} value={project}>
+                    {project}
+                  </option>
+                ))}
+              </select>
+            </span>
           </label>
           <div className="action-buttons">
             <button

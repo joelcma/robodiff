@@ -76,6 +76,15 @@ function App() {
     localStorage.setItem("robodiff-pins", JSON.stringify(Array.from(pinned)));
   }, [pinned]);
 
+  // A deleted or moved run can remove the final instance of the selected
+  // project. Clear that stale value so the visible "All projects" state and
+  // the result list always agree.
+  useEffect(() => {
+    if (projectFilter && !projectOptions.includes(projectFilter)) {
+      setProjectFilter("");
+    }
+  }, [projectFilter, projectOptions]);
+
   // Filtered and sorted runs
   const filteredRuns = useMemo(() => {
     let filtered = runs.filter((r) =>
