@@ -55,7 +55,16 @@ type runEntry struct {
 	robotSize          int64
 	statsIncomplete    bool
 	durationIncomplete bool
-	hotUntil           time.Time
+	// hydrateAttempted stops the background fill from re-reading a file it
+	// could not complete (malformed, truncated, no timestamps) on every scan.
+	// scanOnce replaces the entry when the file changes, which resets it.
+	hydrateAttempted bool
+	hotUntil         time.Time
+}
+
+type fileStamp struct {
+	modTime time.Time
+	size    int64
 }
 
 type RunStore struct {
@@ -65,6 +74,9 @@ type RunStore struct {
 
 	mu   sync.RWMutex
 	runs map[string]*runEntry
+	// nonRobotXML remembers .xml files that are not Robot outputs so they are
+	// not probed again until they change.
+	nonRobotXML map[string]fileStamp
 
 	fillMu         sync.Mutex
 	fillInProgress bool
@@ -219,7 +231,7 @@ func (s *RunStore) collectIncompleteIDs() []string {
 		if entry == nil {
 			continue
 		}
-		if entry.hotUntil.After(now) {
+		if entry.hotUntil.After(now) || entry.hydrateAttempted {
 			continue
 		}
 		if entry.statsIncomplete || entry.durationIncomplete {
@@ -239,28 +251,29 @@ func (s *RunStore) hydrateRun(id string) {
 	abs := entry.abs
 	s.mu.RUnlock()
 
-	fi, err := os.Stat(abs)
-	if err != nil {
-		return
-	}
-
-	pass, fail, total, okStats, err := readRobotStatistics(abs)
-	if err != nil {
-		return
-	}
-
-	start, end, okTimes, err := readRobotMessageTimes(abs)
-	if err != nil {
-		return
-	}
+	var pass, fail, total int
+	var okStats, okTimes bool
 	var durationMs int64
-	if okTimes && !start.IsZero() && !end.IsZero() && end.After(start) {
-		durationMs = end.Sub(start).Milliseconds()
+	fi, err := os.Stat(abs)
+	if err == nil {
+		pass, fail, total, okStats, err = readRobotStatistics(abs)
+	}
+	if err == nil {
+		var start, end time.Time
+		start, end, okTimes, err = readRobotMessageTimes(abs)
+		if okTimes && !start.IsZero() && !end.IsZero() && end.After(start) {
+			durationMs = end.Sub(start).Milliseconds()
+		}
 	}
 
 	s.mu.Lock()
-	entry = s.runs[id]
-	if entry == nil {
+	if s.runs[id] != entry {
+		// The file changed while it was being read; the new entry gets its own attempt.
+		s.mu.Unlock()
+		return
+	}
+	entry.hydrateAttempted = true
+	if err != nil {
 		s.mu.Unlock()
 		return
 	}
@@ -285,11 +298,14 @@ func (s *RunStore) scanOnce() {
 	now := time.Now()
 	changed := false
 
+	nonRobot := make(map[string]fileStamp)
+
 	s.mu.RLock()
 	prev := make(map[string]*runEntry, len(s.runs))
 	for k, v := range s.runs {
 		prev[k] = v
 	}
+	prevNonRobot := s.nonRobotXML
 	s.mu.RUnlock()
 
 	const maxDepth = 3 // allow nested layouts like root/run/output.xml or root/env/run/output.xml
@@ -332,10 +348,6 @@ func (s *RunStore) scanOnce() {
 				continue
 			}
 
-			if !isRobotXMLFile(absPath) {
-				continue
-			}
-
 			fi, err := os.Stat(absPath)
 			if err != nil {
 				continue
@@ -346,12 +358,31 @@ func (s *RunStore) scanOnce() {
 				continue
 			}
 
+			id := stableID(abs)
+			runSize := runFolderSize(filepath.Dir(abs))
+
+			// Only stat unchanged files: opening and parsing every XML on each
+			// scan keeps the CPU and disk busy even when nothing happens.
+			if existing, ok := prev[id]; ok && existing != nil &&
+				existing.info.ModTime.Equal(fi.ModTime()) && existing.info.Size == runSize {
+				updated[id] = existing
+				continue
+			}
+			stamp := fileStamp{modTime: fi.ModTime(), size: fi.Size()}
+			if known, ok := prevNonRobot[abs]; ok && known.modTime.Equal(stamp.modTime) && known.size == stamp.size {
+				nonRobot[abs] = stamp
+				continue
+			}
+
+			if !isRobotXMLFile(absPath) {
+				nonRobot[abs] = stamp
+				continue
+			}
+
 			rel, err := filepath.Rel(s.dir, abs)
 			if err != nil {
 				rel = name
 			}
-
-			id := stableID(abs)
 
 			runName := ""
 			if lower == "output.xml" {
@@ -363,14 +394,9 @@ func (s *RunStore) scanOnce() {
 			}
 			projectName := projectNameForRobotXML(abs)
 
-			runSize := runFolderSize(filepath.Dir(abs))
 			isHot := now.Sub(fi.ModTime()) < hotFileCooldown
 
 			if existing, ok := prev[id]; ok && existing != nil {
-				if existing.info.ModTime.Equal(fi.ModTime()) && existing.info.Size == runSize {
-					updated[id] = existing
-					continue
-				}
 				changed = true
 				if isHot {
 					clone := *existing
@@ -383,6 +409,7 @@ func (s *RunStore) scanOnce() {
 					clone.info.Size = runSize
 					clone.statsIncomplete = true
 					clone.durationIncomplete = true
+					clone.hydrateAttempted = false
 					clone.hotUntil = now.Add(hotFileCooldown)
 					updated[id] = &clone
 					continue
@@ -447,6 +474,7 @@ func (s *RunStore) scanOnce() {
 
 	s.mu.Lock()
 	s.runs = updated
+	s.nonRobotXML = nonRobot
 	s.mu.Unlock()
 	if changed {
 		s.persistCacheFromStore()
