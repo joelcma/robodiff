@@ -64,7 +64,6 @@ export default function RunList({
   loadingDiff,
   loadingRunView,
   onOpenTimeBreakdown,
-  loadingRuns,
   sortBy,
   sortDir,
   onSort,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import Header from "./components/Header";
 import HelpModal from "./components/HelpModal";
@@ -21,12 +21,12 @@ function calculateTestStatus(results = []) {
 
 function App() {
   const [runs, setRuns] = useState([]);
+  const runsJsonRef = useRef("");
   const [dir, setDir] = useState("");
   const [selected, setSelected] = useState(() => new Set());
   const [title] = useState("Robodiff");
   const [diff, setDiff] = useState(null);
   const [singleRun, setSingleRun] = useState(null);
-  const [loadingRuns, setLoadingRuns] = useState(false);
   const [loadingDiff, setLoadingDiff] = useState(false);
   const [loadingRunView, setLoadingRunView] = useState(false);
   const [deletingRuns, setDeletingRuns] = useState(false);
@@ -143,7 +143,6 @@ function App() {
   }, [diff, diffFilter]);
 
   async function refreshRuns() {
-    setLoadingRuns(true);
     try {
       const res = await fetch(buildApiUrl("/api/runs"));
       const data = await res.json().catch(() => ({}));
@@ -155,7 +154,14 @@ function App() {
         });
         return;
       }
-      setRuns(Array.isArray(data.runs) ? data.runs : []);
+      const nextRuns = Array.isArray(data.runs) ? data.runs : [];
+      const nextRunsJson = JSON.stringify(nextRuns);
+      // Polling usually returns the same list; keep the old array so the run
+      // list doesn't re-render every few seconds.
+      if (nextRunsJson !== runsJsonRef.current) {
+        runsJsonRef.current = nextRunsJson;
+        setRuns(nextRuns);
+      }
       setDir(data.dir || "");
       setError((prev) =>
         prev?.code === "RUNS_LOAD_FAILED" ? null : prev,
@@ -166,8 +172,6 @@ function App() {
         message: e?.message || String(e),
         detail: "",
       });
-    } finally {
-      setLoadingRuns(false);
     }
   }
 
@@ -400,10 +404,29 @@ function App() {
     }
   }
 
+  // Poll only while the window is visible; catch up as soon as it is shown again.
   useEffect(() => {
-    refreshRuns();
-    const t = setInterval(refreshRuns, 2000);
-    return () => clearInterval(t);
+    let timer = null;
+    function stop() {
+      if (timer !== null) clearInterval(timer);
+      timer = null;
+    }
+    function start() {
+      stop();
+      refreshRuns();
+      timer = setInterval(refreshRuns, 2000);
+    }
+    function handleVisibility() {
+      if (document.hidden) stop();
+      else start();
+    }
+
+    if (!document.hidden) start();
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, []);
 
   // Keyboard shortcuts
@@ -547,7 +570,6 @@ function App() {
           loadingDiff={loadingDiff}
           loadingRunView={loadingRunView}
           onOpenTimeBreakdown={openTimeBreakdown}
-          loadingRuns={loadingRuns}
           sortBy={sortBy}
           sortDir={sortDir}
           onSort={sortColumn}
