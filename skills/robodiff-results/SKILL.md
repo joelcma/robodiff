@@ -9,7 +9,7 @@ Use the read-only `/api/agent/` API to move from a run summary to precise eviden
 
 ## Connect and select the run
 
-Use a supplied base URL or `robodiff_API_BASE` if available. CLI servers default to `http://127.0.0.1:8080`. The desktop app chooses a dynamic port: its latest `Backend args: --addr 127.0.0.1:PORT` log entry identifies a candidate, but verify it is still live. On macOS the log is `~/Library/Application Support/robodiff-electron/robodiff.log`. On Windows look under `%APPDATA%/robodiff-electron`; on Linux under `${XDG_CONFIG_HOME:-~/.config}/robodiff-electron`. Logs may be stale; do not assume the latest entry is a running server.
+Use a supplied base URL or `robodiff_API_BASE` if available. CLI servers default to `http://127.0.0.1:8080`. The desktop app chooses a dynamic port. On macOS, run `ps axu | grep robodiff` and inspect the actual Robodiff process arguments for `--addr 127.0.0.1:PORT` (ignore the grep process itself). Verify that candidate is still live; do not reuse a port from an earlier run. If the process arguments do not show the address, the latest `Backend args: --addr 127.0.0.1:PORT` entry in the app log is another candidate, not proof it is running. On macOS the log is `~/Library/Application Support/robodiff-electron/robodiff.log`. On Windows look under `%APPDATA%/robodiff-electron`; on Linux under `${XDG_CONFIG_HOME:-~/.config}/robodiff-electron`. Logs may be stale; do not assume the latest entry is a running server. If Robodiff is unavailable or its diagnostic API cannot be reached, ask the user to start/restart it before continuing with result analysis.
 
 Check `GET /api/agent/runs?limit=20` and require JSON with `schemaVersion: 1`. After selecting a run, call `/api/agent/runs/RUN/analysis-pack` first. It is the compact first-pass response: counts, status, execution-error count, up to five groups, one representative test, and one representative failure node per group. A 404 or HTML response can mean an older backend: rebuild/restart Robodiff before using these routes. If multiple runs fit the request, resolve the intended run using names, relative paths and timestamps; ask when ambiguity changes the investigation. Listing counts may lag file scanning; triage counts come from the parsed artifact. Do not interpret unavailable or unparseable results as passing.
 
@@ -17,16 +17,16 @@ Check `GET /api/agent/runs?limit=20` and require JSON with `schemaVersion: 1`. A
 
 Use [scripts/robodiff_read.py](scripts/robodiff_read.py) for diagnostic requests instead of raw curl. It uses only Python's standard library and accepts only loopback HTTP origins, diagnostic GET routes and pagination/status parameters. It disables redirects and environment proxies, validates schemaVersion, and writes JSON to stdout. It cannot replay requests or modify runs.
 
-Resolve the Python 3 executable (prefer an available pyenv interpreter) and this installed skill's script to absolute paths, then keep those two paths unchanged throughout the investigation. Example shape, with placeholders replaced by literal verified values before execution:
+Resolve an available Python 3 executable and this installed skill's script to absolute paths, then keep those two paths unchanged throughout the investigation. Example shape, with placeholders replaced by literal verified values before execution:
 
 ```sh
 /absolute/path/to/python3 /absolute/path/to/robodiff-results/scripts/robodiff_read.py --base http://127.0.0.1:PORT '/api/agent/runs?limit=20'
 /absolute/path/to/python3 /absolute/path/to/robodiff-results/scripts/robodiff_read.py --base http://127.0.0.1:PORT /api/agent/runs/RUN/triage
 ```
 
-Run normally first. If sandbox networking blocks the call, retry through the normal escalation tool with `prefix_rule` containing exactly the Python executable and the installed reader script path: `["/absolute/path/to/python3", "/absolute/path/to/robodiff-results/scripts/robodiff_read.py"]`. Explain that saving approval for this reader covers future local diagnostic reads. Keep `--base`, port, run/node IDs and query strings out of that prefix so it remains useful across evidence lookups and app restarts. Do not request an unrestricted Python or curl prefix.
+Run normally first. If the agent's sandbox blocks local networking, use that agent's normal permission mechanism for the diagnostic reader. Where reusable command approvals are supported, scope approval to the exact Python executable and installed reader script, excluding the base URL, port, IDs and query strings. Do not request unrestricted Python or curl access. Honor denials and administrative restrictions. Screenshot downloads are separate from this JSON reader and may need their own approval.
 
-Use single, direct commands with literal arguments: shell variables, inline environment assignments, heredocs and shell wrappers can prevent prefix matching. Parse the returned JSON in the agent/tool environment instead of wrapping each request in a new shell script. Do not ask for a separate conversational confirmation for every read. A one-time approval is not a saved rule: if the user chooses only "Allow once", later sandbox prompts can still occur. Honor denials and administrative restrictions; never edit approval rules to bypass them. Screenshot downloads remain outside this JSON reader and may need their own approval.
+Use direct commands with literal arguments where command approvals require them. Parse returned JSON in the agent/tool environment. Approval behavior varies by agent; do not assume Codex-specific tool arguments such as `prefix_rule` exist in Copilot.
 
 ## Investigate
 
@@ -40,16 +40,16 @@ Use single, direct commands with literal arguments: shell variables, inline envi
 
 All routes below use GET. RUN, TEST, NODE and GROUP are returned IDs, not names.
 
-| Route | Contents |
-|---|---|
-| `/api/agent/runs` | Recent discovered runs |
-| `/api/agent/runs/RUN/triage` | Parsed test counts, run status, failure groups, execution error count |
-| `/api/agent/runs/RUN/analysis-pack` | Compact first-pass summary with top groups, representative evidence, and slow-keyword timing |
-| `/api/agent/runs/RUN/errors` | Robot execution errors/warnings |
-| `/api/agent/runs/RUN/tests?status=FAIL` | Test references; status filter optional |
-| `/api/agent/runs/RUN/groups/GROUP/tests` | All affected test references |
-| `/api/agent/runs/RUN/tests/TEST` | Status, source, group IDs, root keywords and terminal failures |
-| `/api/agent/runs/RUN/nodes/NODE` | Keyword arguments, messages, children, failure descendants and parent reference |
+| Route                                    | Contents                                                                                     |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `/api/agent/runs`                        | Recent discovered runs                                                                       |
+| `/api/agent/runs/RUN/triage`             | Parsed test counts, run status, failure groups, execution error count                        |
+| `/api/agent/runs/RUN/analysis-pack`      | Compact first-pass summary with top groups, representative evidence, and slow-keyword timing |
+| `/api/agent/runs/RUN/errors`             | Robot execution errors/warnings                                                              |
+| `/api/agent/runs/RUN/tests?status=FAIL`  | Test references; status filter optional                                                      |
+| `/api/agent/runs/RUN/groups/GROUP/tests` | All affected test references                                                                 |
+| `/api/agent/runs/RUN/tests/TEST`         | Status, source, group IDs, root keywords and terminal failures                               |
+| `/api/agent/runs/RUN/nodes/NODE`         | Keyword arguments, messages, children, failure descendants and parent reference              |
 
 Collections return `{items,total,offset,nextOffset,truncated}`. Default limit is 20, maximum 100. Fetch `?offset=N&limit=M` using that collection's `nextOffset`. On test/node responses the same offset applies independently to each collection; advance the collection you need rather than assuming their totals match.
 

@@ -314,3 +314,20 @@ folder into your agent's skill directory (for Codex: `~/.codex/skills/`). The CL
 uses port 8080 by default; Electron chooses a dynamic port recorded in its
 `robodiff.log` as `Backend args: --addr ...`. Rebuild and restart an existing
 backend to expose the new endpoints.
+
+For GitHub Copilot, run from this repository (requires Make and the `install`
+utility, e.g. on macOS, Linux or WSL):
+
+```sh
+make copilot-skill
+```
+
+This installs `SKILL.md` and its Python reader into
+`~/.copilot/skills/robodiff-results/`, Copilot's personal skill location, shared
+across local projects. Python 3 and a running Robodiff server are required to
+use the skill. Running the command again updates these two files in place.
+To choose another skills directory:
+
+```sh
+make copilot-skill COPILOT_SKILLS_DIR="/path/to/skills"
+```

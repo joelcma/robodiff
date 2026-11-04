@@ -1,6 +1,14 @@
 
 
-.PHONY: frontend backend electron-install electron-dev electron-build electron-install-mac electron-build-win
+.PHONY: frontend backend electron-install electron-dev electron-build electron-install-mac electron-build-win copilot-skill
+
+COPILOT_SKILLS_DIR ?= $(HOME)/.copilot/skills
+
+copilot-skill:
+	install -d "$(COPILOT_SKILLS_DIR)/robodiff-results/scripts"
+	install -m 644 SKILL.md "$(COPILOT_SKILLS_DIR)/robodiff-results/SKILL.md"
+	install -m 644 skills/robodiff-results/scripts/robodiff_read.py "$(COPILOT_SKILLS_DIR)/robodiff-results/scripts/robodiff_read.py"
+	@echo "Installed robodiff-results to $(COPILOT_SKILLS_DIR)/robodiff-results"
 
 frontend:
 	cd web && npm install && npm run dev
