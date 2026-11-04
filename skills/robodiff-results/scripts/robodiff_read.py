@@ -11,7 +11,7 @@ import urllib.request
 MAX_BYTES = 2 * 1024 * 1024
 ID = r"[A-Za-z0-9_-]+"
 ROUTE = re.compile(
-    rf"/api/agent/runs(?:/{ID}/(?:analysis-pack|triage|errors|tests|tests/{ID}|nodes/{ID}|groups/{ID}/tests))?"
+    rf"/api/agent/runs(?:/{ID}/(?:analysis-pack|triage|errors|compare|tests|tests/{ID}|tests/{ID}/history|nodes/{ID}|groups/{ID}/tests))?"
 )
 
 
@@ -44,6 +44,9 @@ def request_url(base, endpoint):
         if key == "status":
             if value not in ("FAIL", "PASS", "SKIP"):
                 raise ValueError("status must be FAIL, PASS or SKIP")
+        elif key == "base":
+            if not re.fullmatch(ID, value):
+                raise ValueError("base must be a run ID")
         elif key in ("offset", "textOffset", "limit", "textLimit"):
             if not re.fullmatch(r"[0-9]{1,10}", value):
                 raise ValueError("pagination values must be nonnegative integers")

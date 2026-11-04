@@ -11,12 +11,15 @@ class ReaderTests(unittest.TestCase):
         for endpoint in ("/api/agent/runs", "/api/agent/runs/abc/triage",
                          "/api/agent/runs/abc/errors", "/api/agent/runs/abc/tests",
                          "/api/agent/runs/abc/tests/s0-t1", "/api/agent/runs/abc/nodes/s0-t1-k2",
-                         "/api/agent/runs/abc/groups/g123/tests"):
+                         "/api/agent/runs/abc/groups/g123/tests", "/api/agent/runs/abc/compare",
+                         "/api/agent/runs/abc/tests/s0-t1/history"):
             with self.subTest(endpoint=endpoint):
                 self.assertEqual(reader.request_url("http://localhost:55827", endpoint),
                                  "http://127.0.0.1:55827" + endpoint)
         self.assertEqual(reader.request_url("http://[::1]:8080", "/api/agent/runs?limit=1&offset=2&textOffset=3&status=FAIL"),
                          "http://[::1]:8080/api/agent/runs?limit=1&offset=2&textOffset=3&status=FAIL")
+        self.assertEqual(reader.request_url("http://127.0.0.1:8080", "/api/agent/runs/abc/compare?base=def-1_2"),
+                         "http://127.0.0.1:8080/api/agent/runs/abc/compare?base=def-1_2")
 
     def test_rejects_other_targets_and_operations(self):
         for base in ("https://example.com", "http://example.com", "file:///tmp/data", "http://127.0.0.1@evil.test",
@@ -27,7 +30,9 @@ class ReaderTests(unittest.TestCase):
         for path in ("/api/delete-runs", "/api/http-try", "/api/run-file?path=secret", "//evil.test/api/agent/runs",
                      "/api/agent/runs/../delete-runs", "/api/agent/runs/%2e%2e/triage", "/api/agent/runs#x",
                      "/api/agent/runs?limit=101", "/api/agent/runs?limit=0", "/api/agent/runs?offset=-1",
-                     "/api/agent/runs?command=delete", "/api/agent/runs?limit=1&limit=2"):
+                     "/api/agent/runs?command=delete", "/api/agent/runs?limit=1&limit=2",
+                     "/api/agent/runs/abc/compare?base=../x", "/api/agent/runs/abc/compare?base=",
+                     "/api/agent/runs/abc/history"):
             with self.subTest(path=path), self.assertRaises(ValueError):
                 reader.request_url("http://127.0.0.1:8080", path)
 

@@ -11,7 +11,7 @@ Use the read-only `/api/agent/` API to move from a run summary to precise eviden
 
 Use a supplied base URL or `robodiff_API_BASE` if available. CLI servers default to `http://127.0.0.1:8080`. The desktop app chooses a dynamic port. On macOS, run `ps axu | grep robodiff` and inspect the actual Robodiff process arguments for `--addr 127.0.0.1:PORT` (ignore the grep process itself). Verify that candidate is still live; do not reuse a port from an earlier run. If the process arguments do not show the address, the latest `Backend args: --addr 127.0.0.1:PORT` entry in the app log is another candidate, not proof it is running. On macOS the log is `~/Library/Application Support/robodiff-electron/robodiff.log`. On Windows look under `%APPDATA%/robodiff-electron`; on Linux under `${XDG_CONFIG_HOME:-~/.config}/robodiff-electron`. Logs may be stale; do not assume the latest entry is a running server. If Robodiff is unavailable or its diagnostic API cannot be reached, ask the user to start/restart it before continuing with result analysis.
 
-Check `GET /api/agent/runs?limit=20` and require JSON with `schemaVersion: 1`. After selecting a run, call `/api/agent/runs/RUN/analysis-pack` first. It is the compact first-pass response: counts, status, execution-error count, up to five groups, one representative test, and one representative failure node per group. A 404 or HTML response can mean an older backend: rebuild/restart Robodiff before using these routes. If multiple runs fit the request, resolve the intended run using names, relative paths and timestamps; ask when ambiguity changes the investigation. Listing counts may lag file scanning; triage counts come from the parsed artifact. Do not interpret unavailable or unparseable results as passing.
+Check `GET /api/agent/runs?limit=20` and require JSON with `schemaVersion: 1`. After selecting a run, call `/api/agent/runs/RUN/analysis-pack` first. It is the compact first-pass response: counts, status, execution-error count, a `comparison` with the previous run of the same project, up to five groups, one representative test, and one representative failure node per group. A 404 or HTML response can mean an older backend: rebuild/restart Robodiff before using these routes. If multiple runs fit the request, resolve the intended run using names, relative paths and timestamps; ask when ambiguity changes the investigation. Listing counts may lag file scanning; triage counts come from the parsed artifact. Do not interpret unavailable or unparseable results as passing.
 
 ## Use the bundled reader and reusable approval
 
@@ -31,10 +31,11 @@ Use direct commands with literal arguments where command approvals require them.
 ## Investigate
 
 1. Read triage. Inspect suite setup/teardown groups and execution errors first. Groups are ordered with suite failures first, then by affected test count. A test may belong to multiple groups; never sum group counts as unique failures.
-2. Follow `evidenceNodeId` to a node. Its `failures` page identifies terminal failing descendants; follow those for arguments, messages and source locations. Follow `parentId` upward and inspect its children for preceding/context steps. For a test-status-only group, use an example test's status message.
-3. Read one representative test per group initially. Expand membership or inspect additional tests when evidence differs. Whitespace-normalized messages and keyword paths are grouping heuristics, not proof of a common root cause. Suite propagation is linked only when Robot's test status explicitly mentions the suite setup/teardown failure.
-4. Use test `failures` for terminal failure candidates. Failed attempts beneath successful retry keywords are excluded there, but remain in the navigable tree. A failing enclosing keyword can still contain intentionally handled failures: inspect context before attributing cause.
-5. Retrieve screenshot URLs from node messages when visual evidence helps. Resolve relative URLs against BASE. These use the existing screenshot endpoint, including Pabot worker fallback. A reference is not a guarantee the file exists.
+2. Establish what is new. Use the pack's `comparison` and each group's `newFailureCount`, then `/compare` for the tests. Prioritize new failures: a regression since the previous run usually points to a recent change, while failures that were already failing need a different explanation. Check `removedTests` too: tests that ran last time but not now can mean an aborted suite. For a single test, `/history` shows its earlier statuses and a `pattern` (`new-failure`, `consistently-failing`, `intermittent`, `no-history`); intermittent results suggest flakiness or environment, not the latest change.
+3. Follow `evidenceNodeId` to a node. Its `failures` page identifies terminal failing descendants; follow those for arguments, messages and source locations. Follow `parentId` upward and inspect its children for preceding/context steps. For a test-status-only group, use an example test's status message.
+4. Read one representative test per group initially. Expand membership or inspect additional tests when evidence differs. Whitespace-normalized messages and keyword paths are grouping heuristics, not proof of a common root cause. Suite propagation is linked only when Robot's test status explicitly mentions the suite setup/teardown failure.
+5. Use test `failures` for terminal failure candidates. Failed attempts beneath successful retry keywords are excluded there, but remain in the navigable tree. A failing enclosing keyword can still contain intentionally handled failures: inspect context before attributing cause.
+6. Retrieve screenshot URLs from node messages when visual evidence helps. Resolve relative URLs against BASE. These use the existing screenshot endpoint, including Pabot worker fallback. A reference is not a guarantee the file exists.
 
 ## Routes and bounded evidence
 
@@ -48,6 +49,8 @@ All routes below use GET. RUN, TEST, NODE and GROUP are returned IDs, not names.
 | `/api/agent/runs/RUN/errors`             | Robot execution errors/warnings                                                              |
 | `/api/agent/runs/RUN/tests?status=FAIL`  | Test references; status filter optional                                                      |
 | `/api/agent/runs/RUN/groups/GROUP/tests` | All affected test references                                                                 |
+| `/api/agent/runs/RUN/compare`            | New failures, still failing, fixed, added and removed tests vs. the previous run (`?base=RUN`) |
+| `/api/agent/runs/RUN/tests/TEST/history` | The test's status in earlier runs of the same project, newest first, with a summary           |
 | `/api/agent/runs/RUN/tests/TEST`         | Status, source, group IDs, root keywords and terminal failures                               |
 | `/api/agent/runs/RUN/nodes/NODE`         | Keyword arguments, messages, children, failure descendants and parent reference              |
 
@@ -57,9 +60,11 @@ Text fields return `{text,totalChars,offset,nextOffset,truncated}`. The default 
 
 `analysis-pack` also returns `timeSummary` and up to ten `slowKeywords`. These are compact aggregates with total, call count, average, and maximum duration. Keyword durations are inclusive; nested calls can overlap, so do not add them together as wall-clock time. Use the slow list to choose which test/node to inspect next.
 
-IDs are positional and stable only while the artifact is unchanged. Do not use them to match tests across runs. Re-read triage after a rerun or file replacement. Source locations are included only when provided by XML; absence is not evidence that source is unavailable locally.
+IDs are positional and stable only while the artifact is unchanged. Do not use them to match tests across runs; use `/compare` and `/history`, which match by suite path and test name and return each run's own test ID. Re-read triage after a rerun or file replacement. Source locations are included only when provided by XML; absence is not evidence that source is unavailable locally.
 
 The parser currently retains keywords, IF and FOR control flow. Evidence nested in other control structures may be absent; honor `parserLimitations` and inspect the original artifact when needed. Do not infer success from an empty failure list. Some fixture groups can have zero explicitly linked tests.
+
+Cross-run routes only use runs of the same project, ordered by file time. A renamed or moved test shows as `ABSENT` or as added/removed, not as the same test. `sameFailure` and `sameFailureAsCurrent` compare whitespace-normalized message previews: a hint, not proof of a shared cause. On `/history`, `limit` counts earlier runs (default 10, maximum 50) and `summary` covers only the returned runs; `newerRunCount` above zero means the selected run is not the latest. Earlier runs are read on first use and then cached: an entry marked `unavailable` with "still loading" is worth retrying after a few seconds, and is not evidence of a pass or failure.
 
 ## Report and boundaries
 

@@ -65,6 +65,11 @@ func (s *Server) handleAgent(w http.ResponseWriter, r *http.Request) {
 		// This is the normal first call for an agent. Keep it deliberately small:
 		// one representative per group, with one compact terminal node.
 		packLimit := minAgent(limit, 5)
+		// Earlier runs are read lazily; don't hold the first call for long. A
+		// timed-out read keeps going, so /compare usually succeeds right after.
+		cctx, ccancel := context.WithTimeout(r.Context(), 5*time.Second)
+		comparison, newFailureIDs := s.agentPackComparison(cctx, a, parts[1])
+		ccancel()
 		groups := make([]map[string]any, 0, packLimit)
 		for _, g := range a.groups[:minAgent(packLimit, len(a.groups))] {
 			group := map[string]any{
@@ -76,6 +81,15 @@ func (s *Server) handleAgent(w http.ResponseWriter, r *http.Request) {
 			}
 			if len(g.members) > 0 {
 				group["representativeTest"] = a.testRef(g.members[0])
+			}
+			if newFailureIDs != nil {
+				n := 0
+				for _, id := range g.members {
+					if newFailureIDs[id] {
+						n++
+					}
+				}
+				group["newFailureCount"] = n
 			}
 			if nodeID := agentRepresentativeFailure(a, g); nodeID != "" {
 				group["representativeFailure"] = a.nodeRef(nodeID)
@@ -91,7 +105,36 @@ func (s *Server) handleAgent(w http.ResponseWriter, r *http.Request) {
 		payload["groupCount"] = len(a.groups)
 		payload["groups"] = groups
 		payload["groupsTruncated"] = len(a.groups) > len(groups)
+		payload["comparison"] = comparison
 		payload["next"] = "Fetch /triage or /groups/{groupId}/tests for expanded evidence."
+	case len(parts) == 3 && parts[2] == "compare":
+		cctx, ccancel := context.WithTimeout(r.Context(), 20*time.Second)
+		defer ccancel()
+		data, status, msg := s.agentCompare(cctx, a, parts[1], r.URL.Query().Get("base"), offset, limit)
+		if status != 0 {
+			writeError(w, status, msg)
+			return
+		}
+		for k, v := range data {
+			payload[k] = v
+		}
+	case len(parts) == 5 && parts[2] == "tests" && parts[4] == "history":
+		// Here limit counts earlier runs. Each one may need reading, so the
+		// default and maximum are lower than for other collections.
+		runLimit := 10
+		if r.URL.Query().Has("limit") {
+			runLimit = minAgent(limit, 50)
+		}
+		hctx, hcancel := context.WithTimeout(r.Context(), 20*time.Second)
+		defer hcancel()
+		data, status, msg := s.agentHistory(hctx, a, parts[1], parts[3], offset, runLimit, textLimit)
+		if status != 0 {
+			writeError(w, status, msg)
+			return
+		}
+		for k, v := range data {
+			payload[k] = v
+		}
 	case len(parts) == 3 && parts[2] == "triage":
 		payload["runStatus"] = robots[0].Suite.Status.Status
 		payload["runStatusMessage"] = agentText(robots[0].Suite.Status.Message, textOffset, textLimit)

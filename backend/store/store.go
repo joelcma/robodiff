@@ -80,6 +80,12 @@ type RunStore struct {
 
 	fillMu         sync.Mutex
 	fillInProgress bool
+
+	// outcomeMu guards the per-run test outcome cache used for cross-run
+	// history. Never take it while holding mu.
+	outcomeMu    sync.Mutex
+	outcomes     map[string]*outcomeLoad
+	outcomeSlots chan struct{}
 }
 
 type runCacheSnapshot struct {
